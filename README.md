@@ -125,7 +125,7 @@ For services that support it, the owner limits what an agent sees. The filter wo
 - **Check on one call.** In the key's filter page, the button "Check on one call" makes one real read request as the owner (outside the agents' limits, written to the audit log) and shows field names only, never values: what the agent will see and what is hidden.
 - **What the agent knows.** The approval answer and the requests list carry a `filter` object (types, open methods, `read_only`, `mask`), so the agent can plan its calls.
 
-Filters exist for Bitrix24, HubSpot, Pipedrive, and Zendesk. The fields for HubSpot, Pipedrive, and Zendesk come from the providers' documentation and have not been checked against a live account (marked `unverified` in `providers.yaml`). Run "Check on one call" after you save.
+Filters exist for Bitrix24, HubSpot, Pipedrive, and Zendesk. The HubSpot and Pipedrive fields have been checked against live accounts. The Zendesk fields come from the provider's documentation and have not been checked (marked `unverified` in `providers.yaml`). Run "Check on one call" after you save.
 
 The filter does not stop an agent from searching by a hidden field and guessing a value from the result count. See [SECURITY.md](SECURITY.md).
 
@@ -194,7 +194,11 @@ The full threat model, controls, and how to report a vulnerability: [SECURITY.md
 
 Version 1.0: single owner, self-hosted. English is the default interface language. Set `GW_LANG=ru` for Russian. Setup script messages are in English. `docs/DEPLOY.md` is in English, a Russian copy is in `docs/ru/DEPLOY.md`. Code comments are mostly in Russian.
 
-Not yet tested end to end on a live server in this version: Telegram approvals, SMTP notifications, the `ssm` vault on AWS, Docker with a real Caddy certificate, Atlassian and Airtable. Reports are welcome.
+Tested on a live server in this version (Ubuntu 24.04, `file` vault, behind Cloudflare): install with `setup.sh`, the setup wizard and the backup codes screen, requests and approvals over REST and MCP, keys for HubSpot, Pipedrive, Stripe, and Twilio, read-only mode and data filters on real responses, the Slack test message, one backup run.
+
+Tested live on a local install, not yet on a server: Telegram linking and the approval button, SMTP notifications through Resend, Atlassian (read works, write is rejected), and the Airtable connection (reading records has not been checked).
+
+Not tested in this version: the `ssm` vault on AWS, Docker with a real Caddy certificate, certificate renewal behind Cloudflare, restoring a backup, macOS, and Safari. Reports are welcome.
 
 ## Roadmap
 
