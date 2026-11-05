@@ -237,6 +237,15 @@ cat > /etc/apt/apt.conf.d/20auto-upgrades <<'APT'
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT
+# Without their own origins unattended-upgrades touches only the Debian/Ubuntu archives,
+# so Caddy (Cloudsmith) and Node.js (NodeSource) would stay on old versions. A separate file:
+# the default 50unattended-upgrades already defines Origins-Pattern, and APT config is additive.
+cat > /etc/apt/apt.conf.d/51agentkeygate-origins <<'APT'
+Unattended-Upgrade::Origins-Pattern {
+      "site=dl.cloudsmith.io";
+      "site=deb.nodesource.com";
+};
+APT
 # ---------- 2. 1 GB swap (needed on 1 GB RAM: npm ci and native module builds) ----------
 step "1 GB swap and vm.swappiness=10"
 if [[ -z "$(swapon --noheadings --show=NAME)" ]]; then

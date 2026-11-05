@@ -71,6 +71,8 @@ SystemCallErrorNumber=EPERM
 # Resource limits. 512M is sized for a VPS with 1 GB RAM and 1 GB swap (the rest: Caddy, OS);
 # raise the value if the unit gets OOM-killed. TasksMax limits the number of threads and processes (fork bomb).
 MemoryMax=512M
+# The gateway must not swap: the swap file exists for the npm build, not for the running service.
+MemorySwapMax=0
 TasksMax=256
 
 [Install]

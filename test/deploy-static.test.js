@@ -23,10 +23,22 @@ test('gateway.service: харденинг systemd (Н-9)', () => {
   const unit = read('deploy/gateway.service');
   // Строки без комментариев: закомментированная директива не считается.
   const active = unit.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
-  for (const needle of ['CapabilityBoundingSet=\n', 'ProtectProc=invisible', 'MemoryMax=', 'TasksMax=', 'NoNewPrivileges=yes']) {
+  for (const needle of ['CapabilityBoundingSet=\n', 'ProtectProc=invisible', 'MemoryMax=', 'MemorySwapMax=0', 'TasksMax=', 'NoNewPrivileges=yes']) {
     assert.ok(active.includes(needle), `нет директивы ${needle.trim()}`);
   }
   assert.match(active, /MemoryDenyWriteExecute=no/);
+});
+
+test('setup.sh: unattended-upgrades обновляет Caddy (Cloudsmith) и Node (NodeSource), отдельным файлом (I-04)', () => {
+  const setup = read('scripts/setup.sh');
+  assert.ok(setup.includes('site=dl.cloudsmith.io'), 'источник Caddy');
+  assert.ok(setup.includes('site=deb.nodesource.com'), 'источник Node');
+  assert.match(setup, /Unattended-Upgrade::Origins-Pattern \{\n\s*"site=dl\.cloudsmith\.io";\n\s*"site=deb\.nodesource\.com";\n\};/);
+  // отдельный файл в /etc/apt/apt.conf.d/, а не внутри 20auto-upgrades
+  assert.ok(setup.includes("cat > /etc/apt/apt.conf.d/51agentkeygate-origins <<'APT'"), 'отдельный heredoc-файл');
+  const auto = setup.indexOf('20auto-upgrades');
+  const origins = setup.indexOf('51agentkeygate-origins');
+  assert.ok(auto >= 0 && origins > auto, 'файл origins пишется после 20auto-upgrades');
 });
 
 test('setup.sh: npm без скриптов и без глобального safe.directory (Н-10)', () => {
