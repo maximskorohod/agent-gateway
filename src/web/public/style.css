@@ -177,6 +177,8 @@ code { word-break: break-all; }
 /* Список ключей и содержимое рядом. На телефоне одно из двух. */
 .wrap.has-list { max-width: none; margin: 0; padding: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr); align-items: stretch; min-height: 100%; }
 .has-list > .flash { grid-column: 1 / -1; margin: 12px 20px 0; }
+/* Лишнюю высоту забирает ряд колонок, иначе сетка делит её поровну и плашка раздувается */
+.wrap.has-list:has(> .flash) { grid-template-rows: auto 1fr; }
 .list-col { position: relative; padding: 4px 10px 24px; background: var(--card); border-right: 1px solid var(--border); min-width: 0; }
 .list-col h1 { font-size: 1.25rem; margin: 18px 6px 8px; }
 .list-actions { display: flex; justify-content: flex-end; padding: 12px 2px 4px; }
