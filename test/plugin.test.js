@@ -88,3 +88,31 @@ test('копия навыка в плагине совпадает побайт�
   assert.ok(same('skills/agentkeygate/SKILL.md', 'plugins/agentkeygate/skills/agentkeygate/SKILL.md'), 'SKILL.md');
   assert.ok(same('skills/agentkeygate/scripts/gw.sh', 'plugins/agentkeygate/skills/agentkeygate/scripts/gw.sh'), 'gw.sh');
 });
+
+// ---- Пакет 7: server.json для реестра MCP (публикацию выполняет заказчик) ----
+
+test('server.json: имя, версия из package.json, описание до 100 символов, repository, актуальная $schema', () => {
+  const sj = json('server.json');
+  const version = json('package.json').version;
+  assert.equal(sj.name, 'io.github.maximskorohod/agentkeygate');
+  assert.equal(sj.version, version);
+  assert.ok(sj.description.length > 0 && sj.description.length <= 100, `описание ${sj.description.length} символов`);
+  assert.match(sj.repository.url, /github\.com\/maximskorohod\/agentkeygate/);
+  assert.equal(sj.repository.source, 'github');
+  assert.match(sj.$schema, /^https:\/\/static\.modelcontextprotocol\.io\/schemas\/\d{4}-\d{2}-\d{2}\/server\.schema\.json$/);
+});
+
+test('server.json: один remote streamable-http с переменной host и секретным заголовком Authorization', () => {
+  const sj = json('server.json');
+  assert.equal(sj.remotes.length, 1);
+  const rem = sj.remotes[0];
+  assert.equal(rem.type, 'streamable-http');
+  assert.equal(rem.url, 'https://{host}/mcp');
+  assert.equal(rem.variables.host.isRequired, true);
+  assert.ok(rem.variables.host.description, 'описание переменной host');
+  const hdr = rem.headers.find((h) => h.name === 'Authorization');
+  assert.ok(hdr, 'заголовок Authorization');
+  assert.equal(hdr.isRequired, true);
+  assert.equal(hdr.isSecret, true);
+  assert.ok(!('value' in hdr) || hdr.value === undefined, 'значения заголовка в файле нет');
+});

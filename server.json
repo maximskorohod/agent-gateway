@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.maximskorohod/agentkeygate",
+  "description": "Self-hosted gateway: AI agents get temporary, owner-approved API passes, never the keys.",
+  "version": "1.0.1",
+  "repository": {
+    "url": "https://github.com/maximskorohod/agentkeygate",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://{host}/mcp",
+      "variables": {
+        "host": {
+          "description": "Host of your AgentKeyGate gateway, for example gw.example.com",
+          "isRequired": true,
+          "format": "hostname"
+        }
+      },
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Agent token (gwa_...) created in the gateway web UI, sent as a Bearer credential",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
