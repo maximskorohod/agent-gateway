@@ -20,14 +20,14 @@ export const DEMO_MARKER = '.demo-data';
 const NET_DISABLED = 'demo_network_disabled';
 const MAX_BODY = 64 * 1024;
 // Лимиты создания считаются на посетителя (IP) с момента последнего сброса: сид (демо-ключ и демо-агент) не в счёт.
-// Общий потолок в базе выше и защищает только от разрастания данных при массовом создании с многих адресов.
+// Общий потолок в базе не закрывает создание: сверх него удаляются самые старые объекты посетителей (посевные остаются).
 const MAX_KEYS = 3;
 const MAX_AGENTS = 5;
 const TOTAL_KEYS = 30;
 const TOTAL_AGENTS = 50;
 const TRACK_MAX = 10000;
-// Общая частота создания агентов и ключей на весь демо (любые адреса): защита от ротации адресов
-const CREATE_GLOBAL_MAX = 20;
+// Общая частота создания на весь демо (любые адреса): только от потока, данные ограничивает потолок выше
+const CREATE_GLOBAL_MAX = 120;
 const CREATE_GLOBAL_WINDOW_SEC = 600;
 const MAX_LABEL = 40;
 // Файлы, которые шлюз сам создаёт в каталоге данных до проверки (openDb, createVault)
@@ -175,7 +175,7 @@ function classOf(pathname) {
  * @param {object} fastify корневой экземпляр
  * @param {{ repo:object, reset?:{resetting:boolean}, logger?:object }} ctx
  */
-export function demoRouteGuard(fastify, { repo, reset = null }) {
+export function demoRouteGuard(fastify, { repo, vault = null, reset = null, logger = null }) {
   const limiters = {
     site: createLimiter({ limit: 120, windowSec: 60 }),
     api: createLimiter({ limit: 60, windowSec: 60 }),
@@ -212,8 +212,8 @@ export function demoRouteGuard(fastify, { repo, reset = null }) {
     [GET, /^\/(agents|stats|audit)$/],
     [['POST'], /^\/keys\/([^/]+)\/(policy|filter)$/, (m) => isDemoKey(dec(m[1]))],
     // Общий лимит здесь только сверяется, списание в onResponse: запрос без сессии и CSRF не должен тратить бюджет всех посетителей
-    [['POST'], /^\/keys\/new\/demo$/, (m, req) => (created('keys', visitor(req)) < MAX_KEYS - 1 && repo.listCredentials().length < TOTAL_KEYS && limiters.create.peek('demo:create') ? true : 'limit')],
-    [['POST'], /^\/agents$/, (m, req) => (created('agents', visitor(req)) < MAX_AGENTS - 1 && repo.listAgents().length < TOTAL_AGENTS && limiters.create.peek('demo:create') ? true : 'limit')],
+    [['POST'], /^\/keys\/new\/demo$/, (m, req) => (created('keys', visitor(req)) < MAX_KEYS - 1 && limiters.create.peek('demo:create') ? true : 'limit')],
+    [['POST'], /^\/agents$/, (m, req) => (created('agents', visitor(req)) < MAX_AGENTS - 1 && limiters.create.peek('demo:create') ? true : 'limit')],
     [['POST'], /^\/agents\/([^/]+)\/keys$/, (m) => { const id = dec(m[1]); return id !== null && !!repo.getAgent(id); }],
     [GET, /^\/requests\/([^/]+)$/], // экран заявки: только показ, решение ниже
     [['POST'], /^\/requests\/([^/]+)\/(approve|deny)$/],
@@ -249,6 +249,19 @@ export function demoRouteGuard(fastify, { repo, reset = null }) {
     // карта заполнена: вытесняем самого старого посетителя, а не пропускаем нового без учёта
     if (map.size >= TRACK_MAX && !map.has(key)) map.delete(map.keys().next().value);
     map.set(key, (map.get(key) || 0) + 1);
+    // Потолок базы: новый посетитель не получает отказ, уходят самые старые объекты посетителей. Только после настоящего создания
+    try {
+      if (kind === 'agents') {
+        const list = repo.listAgents();
+        for (const a of list.filter((x) => x.id !== DEMO_AGENT_ID).slice(0, Math.max(0, list.length - TOTAL_AGENTS))) repo.demoEvictAgent(a.id);
+      } else {
+        const list = repo.listCredentials();
+        for (const c of list.filter((x) => x.id !== DEMO_CREDENTIAL_ID).slice(0, Math.max(0, list.length - TOTAL_KEYS))) {
+          await vault?.del(`cred/${c.id}`); // сначала сейф: запись без значения безвредна, значение без записи остановит запуск
+          repo.demoEvictCredential(c.id);
+        }
+      }
+    } catch (e) { logger?.error({ err: e.message }, 'demo evict failed'); }
   });
 
   fastify.addHook('onRequest', async (req, reply) => {

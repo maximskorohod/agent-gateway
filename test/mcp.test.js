@@ -190,6 +190,27 @@ async function world(a, baseUrl, { keys = 1, ...keyOpts } = {}) {
 
 // ---- 11. Bearer на каждом запросе ----
 
+test('аудит: /mcp без токена: лимит на сеть /64, карта агрегации и журнал ограничены', async () => {
+  const [a, base] = await startApp();
+  try {
+    const hit = (ip, headers = {}) => a.fastify.inject({ method: 'POST', url: '/mcp', headers: { host: '127.0.0.1', 'x-forwarded-for': ip, 'content-type': 'application/json', ...headers }, payload: '{}' });
+    // смена адреса внутри /64 не обходит лимит; другая сеть не задета
+    for (let i = 1; i <= 20; i++) assert.equal((await hit(`2001:db8:1:2::${i.toString(16)}`)).statusCode, 401, `адрес ${i}`);
+    assert.equal((await hit('2001:db8:1:2::ffff')).statusCode, 429);
+    assert.equal((await hit('2001:db8:1:3::1')).statusCode, 401);
+    // журнал: новый адрес на каждый отказ не даёт новой строки сверх общего бюджета
+    const denied = () => a.repo.listAudit({ limit: 100000 }).filter((r) => r.action === 'mcp.denied').length;
+    const before = denied();
+    for (let i = 0; i < 100; i++) await hit(`10.70.0.${i}`, { origin: 'https://evil.example' });
+    const grew = denied() - before;
+    assert.ok(grew > 0 && grew <= 60, `строк аудита: ${grew}`);
+    // карта: записи со skipped больше не остаются навсегда, размер ограничен
+    for (let i = 0; i < 10100; i++) await hit(`10.${71 + (i >> 16)}.${(i >> 8) & 255}.${i & 255}`);
+    assert.ok(a.mcp.aggSize() <= 10000, `размер: ${a.mcp.aggSize()}`);
+    assert.ok(base);
+  } finally { await a.stop(); }
+});
+
 test('11: Bearer проверяется на каждом запросе: POST/GET/DELETE без токена, с неверным gwa_ и без префикса -> 401', async () => {
   const { agent, s } = await world(app, base);
   const sid = s.sid;

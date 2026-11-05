@@ -406,6 +406,17 @@ export function createRepo(db, { demo = false } = {}) {
       resetAge: db.prepare("SELECT unixepoch() - CAST(value AS INTEGER) AS age FROM meta WHERE key = 'demo_reset_at'"),
       markReset: db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('demo_reset_at', CAST(unixepoch() AS TEXT))"),
     };
+    // Удаление объекта посетителя вместе с историей: при потолке демо уступает место новым
+    const evict = (column, table, tableId) => {
+      const leases = db.prepare(`DELETE FROM leases WHERE grant_id IN (SELECT id FROM grants WHERE ${column} = ?)`);
+      const grants = db.prepare(`DELETE FROM grants WHERE ${column} = ?`);
+      const requests = db.prepare(`DELETE FROM requests WHERE ${column} = ?`);
+      const bindings = db.prepare(`DELETE FROM agent_credentials WHERE ${column} = ?`);
+      const row = db.prepare(`DELETE FROM ${table} WHERE ${tableId} = ?`);
+      return db.transaction((id) => { for (const s of [leases, grants, requests, bindings, row]) s.run(id); });
+    };
+    const evictAgentTx = evict('agent_id', 'agents', 'id');
+    const evictCredentialTx = evict('credential_id', 'credentials', 'id');
     const wipeTx = db.transaction(() => {
       for (const tbl of DEMO_WIPE_TABLES) db.exec(`DELETE FROM ${tbl}`);
       db.exec("DELETE FROM meta WHERE key <> 'csrf_key'");
@@ -417,6 +428,10 @@ export function createRepo(db, { demo = false } = {}) {
     return {
       /** Очистка всех таблиц (кроме meta.csrf_key). Существует только при createRepo(db, { demo: true }). */
       demoWipe() { wipeTx(); },
+      /** Удаляет агента посетителя с заявками, пропусками и привязками. */
+      demoEvictAgent(id) { evictAgentTx(id); },
+      /** Удаляет запись ключа посетителя с заявками, пропусками и привязками; значение в сейфе удаляет вызывающий. */
+      demoEvictCredential(id) { evictCredentialTx(id); },
       /** Факты для assertDemoIsolation: id чужих ключей (включая удалённые), Telegram, каналы уведомлений, пароль владельца. */
       demoIsolationFacts() {
         const o = st.getOwner.get();

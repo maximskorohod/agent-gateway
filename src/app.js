@@ -92,7 +92,7 @@ export async function buildApp(overrides = {}) {
   const demoReset = cfg.demo ? createDemoReset({ repo, vault, cfg, logger, onReset: () => mcp.closeAll?.('demo_reset') }) : null;
   const fastify = Fastify({ logger: false, trustProxy: cfg.trustProxy, bodyLimit: cfg.demo ? 64 * 1024 : cfg.bodyLimit });
   // Демо: allowlist и лимиты по IP — самые первые хуки, до mcp, registerWeb и agentApi
-  if (cfg.demo) demoRouteGuard(fastify, { repo, reset: demoReset, logger });
+  if (cfg.demo) demoRouteGuard(fastify, { repo, vault, reset: demoReset, logger });
   fastify.addHook('onResponse', async (req, reply) => {
     logger.info({ m: req.method, u: maskUrl(req.url), s: reply.statusCode, ms: Math.round(reply.elapsedTime) }, 'req');
   });

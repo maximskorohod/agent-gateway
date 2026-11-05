@@ -8,6 +8,7 @@ import { ListToolsRequestSchema, CallToolRequestSchema, isInitializeRequest } fr
 import { sendApiError } from '../core/infra.js';
 import { authAgent, sha256hex } from '../core/access.js';
 import { createLimiter } from '../core/ratelimit.js';
+import { clientKey } from '../web/client-key.js';
 import { normalizeFilter, compileFilter, describeFilter } from '../core/filter.js';
 
 const pkg = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
@@ -137,6 +138,8 @@ function pickHeaders(h) {
   return out;
 }
 
+const AGG_MAX = 10000; // записей агрегации журнала
+
 export async function mcpPlugin(fastify, { repo, catalog, requests, grants, access, proxy, limits, config, logger, now = Date.now, control = null }) {
   const sessions = new Map(); // id -> session
   const failLimiter = createLimiter({ limit: 20, windowSec: 60 }); // неудачная аутентификация по IP
@@ -149,18 +152,23 @@ export async function mcpPlugin(fastify, { repo, catalog, requests, grants, acce
   const originOk = new Set((config.mcpOrigins || []).map((o) => String(o).trim().replace(/\/+$/, '').toLowerCase()).filter(Boolean));
 
   // ---- агрегация записей audit и логов: не чаще раза в минуту на ключ ----
+  // Карта ограничена: при переполнении уходит самая старая запись, без прохода по всей карте.
+  // Записи об анонимах идут через общий бюджет: смена адреса создаёт новый ключ, и без него журнал растёт на каждый запрос.
+  // У записей об известных агентах бюджета нет: поток анонимных запросов не должен их вытеснять.
   const agg = new Map();
-  function aggregated(key, write) {
+  const anonWrites = createLimiter({ limit: 60, windowSec: 60 });
+  function aggregated(key, write, anonymous = false) {
     const t = now();
     const s = agg.get(key) || { last: -Infinity, skipped: 0 };
     if (t - s.last < 60_000) { s.skipped += 1; agg.set(key, s); return; }
-    write(s.skipped);
+    if (!anonymous || anonWrites.take('write')) write(s.skipped);
+    agg.delete(key);
     agg.set(key, { last: t, skipped: 0 });
-    if (agg.size > 10000) for (const [k, v] of agg) if (t - v.last >= 60_000 && !v.skipped) agg.delete(k);
+    if (agg.size > AGG_MAX) agg.delete(agg.keys().next().value);
   }
   const denied = (reason, who, actor, meta = {}) => aggregated(`d:${reason}:${who}`, (count) => {
     repo.audit(actor, 'mcp.denied', null, { via: 'mcp', reason, ...meta, ...(count > 0 && { count }) });
-  });
+  }, actor === 'system');
 
   // ---- сессии ----
   const agentSessions = (agentId) => { let n = 0; for (const s of sessions.values()) if (s.agentId === agentId) n++; return n; };
@@ -192,7 +200,7 @@ export async function mcpPlugin(fastify, { repo, catalog, requests, grants, acce
   sweepTimer.unref();
 
   async function closeAll(reason) { await Promise.all([...sessions.values()].map((s) => closeSession(s, reason))); }
-  if (control) Object.assign(control, { sweep, closeAll, count: () => sessions.size });
+  if (control) Object.assign(control, { sweep, closeAll, count: () => sessions.size, aggSize: () => agg.size });
   fastify.addHook('onClose', async () => { clearInterval(sweepTimer); await closeAll('shutdown'); });
 
   // ---- токены сессии ----
@@ -397,7 +405,7 @@ export async function mcpPlugin(fastify, { repo, catalog, requests, grants, acce
 
   async function handle(req, reply) {
     const send = (status, error, extra) => reply.code(status).send({ error, ...extra });
-    const ip = req.ip;
+    const ip = clientKey(req.ip); // IPv6 сведён к /64, как на сайте: смена адреса внутри сети не даёт новых ключей
 
     // 1. Host/Origin (DNS rebinding): до тела и до аутентификации
     const host = hostnameOf(req.headers.host);
@@ -418,7 +426,7 @@ export async function mcpPlugin(fastify, { repo, catalog, requests, grants, acce
       // выключенный агент: его сессия закрывается на первом же запросе
       const known = sidHeader ? sessions.get(sidHeader) : null;
       if (known) { const a = repo.getAgent(known.agentId); if (!a || a.enabled !== 1) closeSession(known, 'agent_disabled'); }
-      aggregated(`u:${ip}`, (count) => logger.warn({ ip, count: count + 1 }, 'mcp unauthorized'));
+      aggregated(`u:${ip}`, (count) => logger.warn({ ip, count: count + 1 }, 'mcp unauthorized'), true);
       reply.header('www-authenticate', 'Bearer');
       if (!failLimiter.take(ip)) return send(429, 'rate_limited');
       return send(401, 'unauthorized');

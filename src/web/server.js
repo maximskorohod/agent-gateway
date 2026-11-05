@@ -22,7 +22,7 @@ import { t } from '../i18n.js';
 import { isInfraError, sendApiError, RETRY_AFTER_SEC } from '../core/infra.js';
 import { maskUrl } from '../logger.js';
 import { readChannelMeta, writeChannelMeta, checkSlackWebhook, checkSmtp, codeOf } from '../notify.js';
-import { DEMO_AGENT_ID } from '../demo/reset.js';
+import { DEMO_AGENT_ID, DEMO_CREDENTIAL_ID } from '../demo/reset.js';
 
 const TOTP_RECENT = 300;
 const DEMO_RUNS_MAX = 1000; // столько же, сколько плашек: демо рассчитано на 500 сессий
@@ -325,7 +325,7 @@ export async function registerWeb(fastify, ctx) {
     fastify.post('/demo/simulate', async (req, reply) => {
       if (!requireOwner(req, reply)) return;
       const agent = repo.getAgent(DEMO_AGENT_ID);
-      const credential = repo.listCredentials().find((c) => c.provider === 'demo');
+      const credential = repo.getCredential(DEMO_CREDENTIAL_ID); // посевной, а не первый в списке: ключи посетителей могут быть удалены
       if (!agent || !credential) { flash(req, 'error', t('demo.no_agent')); return reply.redirect('/'); }
       const submit = () => requests.submit({ agent, credential, ttl: 900, calls: 20, reason: t('demo.simulate_reason'), via: 'demo' });
       let r = submit();

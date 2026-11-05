@@ -1,6 +1,7 @@
 // Простой лимитер по ключу: не больше `limit` событий за `windowSec`; блокировка `lockSec` после `lockAfter` ошибок
 export function createLimiter({ limit, windowSec }) {
   const hits = new Map();
+  let swept = 0; // уборка не чаще раза в секунду: иначе при большой карте каждый запрос проходит её целиком
   return {
     /** Есть ли запас, без списания: для лимитов, которые тратятся только при успехе. */
     peek(key) {
@@ -12,7 +13,10 @@ export function createLimiter({ limit, windowSec }) {
       const arr = (hits.get(key) || []).filter((t) => now - t < windowSec * 1000);
       if (arr.length >= limit) { hits.set(key, arr); return false; }
       arr.push(now); hits.set(key, arr);
-      if (hits.size > 10000) for (const [k, v] of hits) if (!v.length || now - v[v.length - 1] > windowSec * 1000) hits.delete(k);
+      if (hits.size > 10000 && now - swept >= 1000) {
+        swept = now;
+        for (const [k, v] of hits) if (!v.length || now - v[v.length - 1] > windowSec * 1000) hits.delete(k);
+      }
       return true;
     },
   };

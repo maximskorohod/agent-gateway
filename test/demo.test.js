@@ -717,13 +717,51 @@ test('5. лимиты демо (ревью M4): 12 адресов одной IPv
   c.ip = '2001:db8:2:2::1';
   assert.equal((await c.post('/agents', { name: 'other-net', keys_all: '1' })).status, 200);
 
-  // общий лимит: 20 успешных созданий за 10 минут на весь демо (уже создано 5), дальше 403 для любых адресов
+  // общий лимит: 120 успешных созданий за 10 минут на весь демо (уже создано 5), дальше 403 для любых адресов
   const ok = [];
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 120; i++) {
     c.ip = `10.50.${i}.1`;
     ok.push((await c.post('/agents', { name: `g${i}`, keys_all: '1' })).status);
   }
-  assert.equal(ok.filter((s) => s === 200).length, 15, '20 в окне минус уже созданные 5');
+  assert.equal(ok.filter((s) => s === 200).length, 115, '120 в окне минус уже созданные 5');
   assert.equal(ok.filter((s) => s === 403).length, 5);
-  assert.equal(c.app.repo.listAgents().length, 21, 'демо-агент + 20 созданных');
+  const left = c.app.repo.listAgents();
+  assert.equal(left.length, 50, 'потолок базы: старые агенты посетителей вытеснены');
+  assert.ok(left.some((a) => a.id === 'demo-agent'), 'посевной агент остался');
+});
+
+test('аудит: при потолке ключей создание открыто, вытесняются старые ключи посетителей вместе со значением в сейфе', async () => {
+  const c = await boot(); await c.login();
+  const key = () => ({ key: 'demo-' + crypto.randomBytes(5).toString('hex'), mode: 'ask', approval: 'web_button', max_ttl: '3600', max_calls: '5', max_parallel: '1' });
+  await c.get('/keys/new/demo');
+  const firstVisitorKeys = [];
+  for (let i = 0; i < 16; i++) {
+    c.ip = `10.51.${i}.1`;
+    assert.equal((await c.post('/keys/new/demo', key())).status, 302, `адрес ${i} ключ 1`);
+    assert.equal((await c.post('/keys/new/demo', key())).status, 302, `адрес ${i} ключ 2`);
+    if (i === 0) {
+      // created_at с точностью до секунды: первым ключам задаём явно более раннее время
+      firstVisitorKeys.push(...c.app.repo.listCredentials().filter((x) => x.id !== 'demo').map((x) => x.id));
+      for (const id of firstVisitorKeys) c.app.db.prepare('UPDATE credentials SET created_at = 1 WHERE id = ?').run(id);
+    }
+  }
+  const list = c.app.repo.listCredentials();
+  assert.equal(list.length, 30);
+  assert.ok(list.some((x) => x.id === 'demo'), 'посевной ключ остался');
+  for (const id of firstVisitorKeys) assert.ok(!c.app.repo.getCredential(id), 'старый ключ удалён');
+  // перезапуск проходит: в сейфе нет значений без записи в базе
+  await c.app.stop();
+  const again = await buildApp({ ...paths(c.dataDir), demo: true, dataDirExplicit: true, prodHosts: [], env: {}, lang: 'en', port: 0, host: '127.0.0.1', publicUrl: 'http://127.0.0.1', logLevel: 'silent' });
+  cleanup.push(() => again.stop());
+  assert.deepEqual(again.repo.listCredentials().map((x) => x.id), ['demo']);
+});
+
+test('аудит: агент посетителя вытесняется вместе с заявками и пропусками', async () => {
+  const c = await boot(); await c.login();
+  const a = mkAgent(c.app, 'to-evict');
+  const pass = await grantFor(c, a);
+  assert.equal((await c.api('GET', '/v1/proxy/demo/ping', { token: pass })).status, 200);
+  c.app.repo.demoEvictAgent('to-evict');
+  assert.equal(c.app.repo.getAgent('to-evict'), null);
+  assert.equal((await c.api('GET', '/v1/proxy/demo/ping', { token: pass })).status, 401, 'пропуск больше не работает');
 });
