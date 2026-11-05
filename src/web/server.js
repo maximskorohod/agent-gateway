@@ -294,7 +294,7 @@ export async function registerWeb(fastify, ctx) {
 
   // ---- экран 1
   fastify.get('/', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     // свежая установка: ссылка на онбординг (пропуск, агент или ключ её убирают); сам мастер уводит на /welcome
     const ob = onboardingState(repo);
     repo.expireRequests();
@@ -323,7 +323,7 @@ export async function registerWeb(fastify, ctx) {
   // «Simulate agent request» создаёт заявку демо-агента через настоящий requests.submit (лимит 6/мин на IP стоит в demoRouteGuard)
   if (config.demo) {
     fastify.post('/demo/simulate', async (req, reply) => {
-      if (!requireOwner(req, reply)) return;
+      if (!requireOwner(req, reply)) return reply;
       const agent = repo.getAgent(DEMO_AGENT_ID);
       const credential = repo.getCredential(DEMO_CREDENTIAL_ID); // посевной, а не первый в списке: ключи посетителей могут быть удалены
       if (!agent || !credential) { flash(req, 'error', t('demo.no_agent')); return reply.redirect('/'); }
@@ -347,36 +347,36 @@ export async function registerWeb(fastify, ctx) {
 
   // ---- онбординг «Connect your agent» (ТЗ §5): прогресс выводится из базы; токен только на странице ответа, в адреса не попадает
   fastify.get('/welcome', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     return html(reply, V.welcomePage({ csrf: req.csrf, state: onboardingState(repo, { telegramConnected: telegramConnected() }), providers: catalog.list().filter((p) => p.onboarding !== false), flash: takeFlash(req) }));
   });
   fastify.post('/welcome/agent/:kind', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     if (!isKind(req.params.kind)) return html(reply, V.errorPage(404, t('error.page_not_found')), 404);
     // создание агента требует свежего кода: до него карточка уходит в черновик (kind входит в тело)
     return runDirect(req, reply, 'agent.create', '', { kind: req.params.kind, all: '1', ids: [] });
   });
   fastify.post('/welcome/skip', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     repo.setMeta('onboarding_skipped', '1');
     return reply.redirect('/');
   });
   fastify.post('/welcome/skip-notify', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     repo.setMeta('onboarding_notify_skipped', '1');
     return reply.redirect('/welcome');
   });
 
   // ---- ключи
   fastify.get('/keys', async (req, reply) => reply.redirect('/'));
-  fastify.get('/keys/new', async (req, reply) => { if (!requireOwner(req, reply)) return; return html(reply, V.pickProvider({ csrf: req.csrf, providers: catalog.list() })); });
+  fastify.get('/keys/new', async (req, reply) => { if (!requireOwner(req, reply)) return reply; return html(reply, V.pickProvider({ csrf: req.csrf, providers: catalog.list() })); });
   fastify.get('/keys/new/:provider', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const provider = catalog.get(req.params.provider); if (!provider) return html(reply, V.errorPage(404, t('error.no_service'), { nav: true, csrf: req.csrf }), 404);
     return html(reply, V.keyForm({ csrf: req.csrf, provider, values: {}, errors: [], telegramConnected: telegramConnected() }));
   });
   fastify.post('/keys/new/:provider', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const provider = catalog.get(req.params.provider); if (!provider) return html(reply, V.errorPage(404, t('error.no_service')), 404);
     const b = req.body;
     const errors = [];
@@ -405,28 +405,28 @@ export async function registerWeb(fastify, ctx) {
     return reply.redirect('/');
   });
   fastify.get('/keys/:id', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const cred = repo.getCredential(req.params.id); if (!cred) return html(reply, V.errorPage(404, t('error.key_not_found'), { nav: true, csrf: req.csrf }), 404);
     repo.expireRequests();
     return html(reply, V.keyDetail({ csrf: req.csrf, cred, provider: catalog.get(cred.provider), telegramConnected: telegramConnected(), flash: takeFlash(req), credentials: repo.listCredentials(), pending: repo.listPending(), providers: catalog.list() }));
   });
   fastify.post('/keys/:id/policy', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     return runDirect(req, reply, 'key.policy', req.params.id, req.body);
   });
   fastify.post('/keys/:id/filter', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     return runDirect(req, reply, 'key.filter', req.params.id, req.body);
   });
   // «Проверить на одном вызове» (ТЗ §9.3): один чтение-вызов владельца, в ответе только имена полей. CSRF проверяет плагин
   fastify.post('/keys/:id/preview', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const cred = repo.getCredential(req.params.id); if (!cred) return html(reply, V.errorPage(404, t('error.key_not_found')), 404);
     const result = await proxy.preview(cred.id); // сбой сейфа/базы — исключение, обработчик корня отдаёт 503 (П-30)
     return html(reply, V.keyDetail({ csrf: req.csrf, cred, provider: catalog.get(cred.provider), telegramConnected: telegramConnected(), preview: result }));
   });
   fastify.post('/keys/:id/replace', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const cred = repo.getCredential(req.params.id); if (!cred) return html(reply, V.errorPage(404, t('error.key_not_found')), 404);
     const provider = catalog.get(cred.provider);
     if (!provider) { flash(req, 'error', t('error.no_service')); return reply.redirect(`/keys/${cred.id}`); }
@@ -448,9 +448,9 @@ export async function registerWeb(fastify, ctx) {
     return reply.redirect(`/keys/${cred.id}`);
   });
   fastify.post('/keys/:id/delete', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const cred = repo.getCredential(req.params.id); if (!cred) return html(reply, V.errorPage(404, t('error.key_not_found')), 404);
-    if (!requireRecentTotp(req, reply, `/keys/${cred.id}`)) return;
+    if (!requireRecentTotp(req, reply, `/keys/${cred.id}`)) return reply;
     // Сначала сейф, потом база: при сбое сейфа запись остаётся (повторное удаление работает), сироты в сейфе нет.
     await vault.del(`cred/${cred.id}`);
     repo.softDeleteCredential(cred.id);
@@ -461,7 +461,7 @@ export async function registerWeb(fastify, ctx) {
 
   // ---- заявки
   async function decideWeb(req, reply, approve) {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const r = repo.getRequest(req.params.id); const cred = r && repo.getCredential(r.credential_id);
     if (!r || !cred) { flash(req, 'error', t('flash.request_not_found')); return reply.redirect('/'); }
     // Заявку с кодом одобряет только код, введённый для этой заявки: свежий вход не считается (П-5)
@@ -472,7 +472,7 @@ export async function registerWeb(fastify, ctx) {
   }
   // Экран заявки: GET только показывает, решение принимают POST ниже. Строку берём из listPending: там имя агента и подпись ключа
   fastify.get('/requests/:id', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     repo.expireRequests();
     const r = repo.listPending().find((x) => x.id === req.params.id);
     if (!r) { flash(req, 'error', t('flash.request_inactive')); return reply.redirect('/'); }
@@ -483,7 +483,7 @@ export async function registerWeb(fastify, ctx) {
   fastify.post('/requests/:id/deny', (req, reply) => decideWeb(req, reply, false));
   // GET только показывает форму кода, решение — POST с CSRF (П-6)
   fastify.get('/requests/:id/approve-confirm', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const r = repo.getRequest(req.params.id);
     if (!r || r.status !== 'pending') { flash(req, 'error', t('flash.request_inactive')); return reply.redirect('/'); }
     // контекст заявки: чьё, к какому ключу, на сколько и сколько вызовов (без секретов)
@@ -497,7 +497,7 @@ export async function registerWeb(fastify, ctx) {
     return html(reply, V.totp({ csrf: req.csrf, title: t('totp.title_approve'), details, action: t('totp.action_approve'), formAction: `/requests/${encodeURIComponent(r.id)}/approve-code`, error: loginError(req.query.e) }));
   });
   fastify.post('/requests/:id/approve-code', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const back = `/requests/${encodeURIComponent(req.params.id)}/approve-confirm`;
     const sKey = 's:' + req.session.idHash;
     if (lockout.locked(lockKey(req)) || lockout.locked(sKey) || codeLockedGlobally()) return reply.redirect(back + '?e=locked');
@@ -516,22 +516,22 @@ export async function registerWeb(fastify, ctx) {
     return { all: String(b.keys_all ?? '1') !== '0', ids: ids.map(String).slice(0, 500) };
   };
   fastify.get('/agents', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const agents = repo.listAgents();
     const bindings = Object.fromEntries(agents.map((a) => [a.id, repo.listAgentCredentials(a.id)]));
     return html(reply, V.agentsPage({ csrf: req.csrf, agents, credentials: repo.listCredentials(), bindings, providers: catalog.list(), flash: takeFlash(req) }));
   });
   fastify.post('/agents', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     // Новый агент — новый токен доступа к ключам: только со свежим кодом (до него форма уходит в черновик).
     return runDirect(req, reply, 'agent.create', '', { name: req.body.name, ...bindingBody(req.body) });
   });
   for (const [verb, enabled] of [['enable', 1], ['disable', 0]]) {
     fastify.post(`/agents/:id/${verb}`, async (req, reply) => {
-      if (!requireOwner(req, reply)) return;
+      if (!requireOwner(req, reply)) return reply;
       const a = repo.getAgent(req.params.id); if (!a) return reply.redirect('/agents');
       // Выключить можно сразу, включить — только со свежим кодом.
-      if (enabled && !requireRecentTotp(req, reply, '/agents')) return;
+      if (enabled && !requireRecentTotp(req, reply, '/agents')) return reply;
       repo.setAgentEnabled(a.id, enabled);
       repo.audit('owner', `agent.${verb}`, a.id, null);
       flash(req, 'ok', enabled ? t('flash.agent_enabled') : t('flash.agent_disabled'));
@@ -539,13 +539,13 @@ export async function registerWeb(fastify, ctx) {
     });
   }
   fastify.post('/agents/:id/keys', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     // Сузить доступ можно сразу, расширить — только со свежим кодом (до него форма уходит в черновик).
     return runDirect(req, reply, 'agent.keys', req.params.id, bindingBody(req.body));
   });
   // ---- черновик 2FA: страница подтверждения «было → стало», применение и отмена (оба POST с CSRF)
   fastify.get('/pending/:id', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const id = req.params.id;
     if (!PENDING_ID.test(id)) return pendingOutcome(req, reply, { status: 'gone' }, id);
     if (!req.hasRecentTotp(TOTP_RECENT)) return reply.redirect('/totp?next=/pending/' + id);
@@ -554,7 +554,7 @@ export async function registerWeb(fastify, ctx) {
     return html(reply, V.pendingPage({ csrf: req.csrf, id, summary: v.summary, flash: takeFlash(req) }));
   });
   fastify.post('/pending/:id/apply', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const id = req.params.id;
     if (!PENDING_ID.test(id)) return pendingOutcome(req, reply, { status: 'gone' }, id);
     const r = pending.apply(actionCtx(req), id);
@@ -562,7 +562,7 @@ export async function registerWeb(fastify, ctx) {
     return sendResult(req, reply, r);
   });
   fastify.post('/pending/:id/cancel', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const id = req.params.id;
     if (!PENDING_ID.test(id)) return pendingOutcome(req, reply, { status: 'gone' }, id);
     const r = pending.cancel(actionCtx(req), id);
@@ -571,8 +571,8 @@ export async function registerWeb(fastify, ctx) {
     return reply.redirect(r.back);
   });
   fastify.post('/agents/:id/delete', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
-    if (!requireRecentTotp(req, reply, '/agents')) return;
+    if (!requireOwner(req, reply)) return reply;
+    if (!requireRecentTotp(req, reply, '/agents')) return reply;
     const a = repo.getAgent(req.params.id); if (!a) return reply.redirect('/agents');
     repo.setAgentEnabled(a.id, 0);
     try { repo.deleteAgent(a.id); flash(req, 'ok', t('flash.agent_deleted')); }
@@ -583,7 +583,7 @@ export async function registerWeb(fastify, ctx) {
 
   // ---- настройки
   fastify.get('/settings', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const u = auth.getUser(req.session.userId);
     const data = { csrf: req.csrf, owner: { totp_enabled: !!u?.totpEnabled }, manageCredentials: caps.manageCredentials, sessions: repo.listSessions().map((s) => ({ ...s, current: s.id_hash === req.session.idHash })), telegramConnected: telegramConnected(), botUsername: tg.current() ? await tg.current().getUsername().catch(() => null) : null, tgCode: repo.getMeta('setup_tg_code') || null, flash: takeFlash(req), notify: { slack: readChannelMeta(repo, 'slack'), email: readChannelMeta(repo, 'email') } };
     const codes = caps.manageCredentials ? takeSessionSecret(req, 'backup_codes') : null; if (codes) data.backupCodes = codes;
@@ -618,9 +618,9 @@ export async function registerWeb(fastify, ctx) {
     for (const s of repo.listSessions()) if (s.id_hash !== req.session.idHash) repo.deleteSession(s.id_hash);
   }
   fastify.post('/settings/password', async (req, reply) => {
-    if (needManage(reply)) return;
-    if (!requireOwner(req, reply)) return;
-    if (!requireRecentTotp(req, reply, '/settings')) return;
+    if (needManage(reply)) return reply;
+    if (!requireOwner(req, reply)) return reply;
+    if (!requireRecentTotp(req, reply, '/settings')) return reply;
     const user = auth.getUser(req.session.userId);
     const { password_old: old_password, password_new: password, password_repeat: password2 } = req.body;
     // старый пароль проверяет провайдер (с теми же блокировками пользователя, что и вход)
@@ -634,16 +634,16 @@ export async function registerWeb(fastify, ctx) {
     flash(req, 'ok', t('flash.pw_changed')); return reply.redirect('/settings');
   });
   fastify.post('/settings/2fa/reissue', async (req, reply) => {
-    if (needManage(reply)) return;
-    if (!requireOwner(req, reply)) return;
-    if (!requireRecentTotp(req, reply, '/settings')) return;
+    if (needManage(reply)) return reply;
+    if (!requireOwner(req, reply)) return reply;
+    if (!requireRecentTotp(req, reply, '/settings')) return reply;
     putSessionSecret(req, 'reissue', (await auth.beginSecondFactorEnrollment(req.session.userId)).secret);
     flash(req, 'ok', t('flash.2fa_scan'));
     return reply.redirect('/settings');
   });
   fastify.post('/settings/2fa/confirm', async (req, reply) => {
-    if (needManage(reply)) return;
-    if (!requireOwner(req, reply)) return;
+    if (needManage(reply)) return reply;
+    if (!requireOwner(req, reply)) return reply;
     // секрет перевыпуска — только у сессии, которая его начала (со свежим кодом), и не дольше 10 минут
     const secret = peekSessionSecret(req, 'reissue');
     const done = secret ? await auth.confirmSecondFactorEnrollment(req.session.userId, secret, String(req.body.code || '').trim()) : { ok: false };
@@ -657,28 +657,28 @@ export async function registerWeb(fastify, ctx) {
     flash(req, 'ok', t('flash.2fa_reissued')); return reply.redirect('/settings');
   });
   fastify.post('/settings/2fa/backup-codes', async (req, reply) => {
-    if (needManage(reply)) return;
-    if (!requireOwner(req, reply)) return;
-    if (!requireRecentTotp(req, reply, '/settings')) return;
+    if (needManage(reply)) return reply;
+    if (!requireOwner(req, reply)) return reply;
+    if (!requireRecentTotp(req, reply, '/settings')) return reply;
     putSessionSecret(req, 'backup_codes', await auth.regenerateBackupCodes(req.session.userId));
     repo.audit('owner', 'backup_codes.new', null, null);
     return reply.redirect('/settings');
   });
   fastify.post('/settings/telegram/connect', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
-    if (!requireRecentTotp(req, reply, '/settings')) return;
+    if (!requireOwner(req, reply)) return reply;
+    if (!requireRecentTotp(req, reply, '/settings')) return reply;
     const r = await connectTelegram(req, String(req.body.token || ''));
     if (r.error) flash(req, 'error', r.error);
     return reply.redirect('/settings');
   });
   fastify.post('/settings/telegram/check', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     if (auth.getUser(req.session.userId)?.tgChatId) { repo.setMeta('setup_tg_code', ''); flash(req, 'ok', t('flash.tg_connected')); } else flash(req, 'error', t('flash.bot_no_start'));
     return reply.redirect('/settings');
   });
   fastify.post('/settings/telegram/disconnect', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
-    if (!requireRecentTotp(req, reply, '/settings')) return;
+    if (!requireOwner(req, reply)) return reply;
+    if (!requireRecentTotp(req, reply, '/settings')) return reply;
     await tg.stop(); await vault.del('sys/tg_bot'); repo.setTg(null, null); repo.setMeta('setup_tg_code', '');
     // ключи с tg_* подтверждением переводим на сайт
     for (const c of repo.listCredentials()) if (c.approval.startsWith('tg_')) repo.updateCredentialPolicy(c.id, { approval: c.approval === 'tg_code' ? 'web_code' : 'web_button' });
@@ -693,12 +693,12 @@ export async function registerWeb(fastify, ctx) {
   };
   // ссылка из сообщений: publicUrl + '/requests' ведёт к списку заявок
   fastify.get('/requests', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     return reply.redirect('/');
   });
   fastify.post('/settings/notify/slack/secret', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
-    if (!requireRecentTotp(req, reply, '/settings')) return;
+    if (!requireOwner(req, reply)) return reply;
+    if (!requireRecentTotp(req, reply, '/settings')) return reply;
     const chk = checkSlackWebhook(req.body.webhook);
     if (!chk.ok) { flash(req, 'error', t(chk.error)); return reply.redirect('/settings'); }
     await vault.put(NOTIFY_SECRET.slack, chk.value);
@@ -707,8 +707,8 @@ export async function registerWeb(fastify, ctx) {
     flash(req, 'ok', t('flash.notify_secret_saved')); return reply.redirect('/settings');
   });
   fastify.post('/settings/notify/email/secret', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
-    if (!requireRecentTotp(req, reply, '/settings')) return;
+    if (!requireOwner(req, reply)) return reply;
+    if (!requireRecentTotp(req, reply, '/settings')) return reply;
     const b = req.body;
     const port = Number(b.port);
     const chk = checkSmtp({ host: b.host, port, encryption: port === 465 ? 'tls' : 'starttls', user: b.user, pass: b.pass, from: b.from, to: b.to });
@@ -719,17 +719,17 @@ export async function registerWeb(fastify, ctx) {
     flash(req, 'ok', t('flash.notify_secret_saved')); return reply.redirect('/settings');
   });
   fastify.post('/settings/notify/:id/clear', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
-    const id = notifyId(req, reply); if (!id) return;
-    if (!requireRecentTotp(req, reply, '/settings')) return;
+    if (!requireOwner(req, reply)) return reply;
+    const id = notifyId(req, reply); if (!id) return reply;
+    if (!requireRecentTotp(req, reply, '/settings')) return reply;
     await vault.del(NOTIFY_SECRET[id]);
     writeChannelMeta(repo, id, { ...readChannelMeta(repo, id), enabled: false, configured: false });
     repo.audit('owner', 'notify.clear', id, null);
     flash(req, 'ok', t('flash.notify_cleared')); return reply.redirect('/settings');
   });
   fastify.post('/settings/notify/:id/test', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
-    const id = notifyId(req, reply); if (!id) return;
+    if (!requireOwner(req, reply)) return reply;
+    const id = notifyId(req, reply); if (!id) return reply;
     const ch = notify.channels?.find((c) => c.id === id);
     if (!readChannelMeta(repo, id).configured || !ch) { flash(req, 'error', t('flash.notify_no_secret')); return reply.redirect('/settings'); }
     let timer;
@@ -744,17 +744,17 @@ export async function registerWeb(fastify, ctx) {
     return reply.redirect('/settings');
   });
   fastify.post('/settings/notify/:id', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
-    const id = notifyId(req, reply); if (!id) return;
+    if (!requireOwner(req, reply)) return reply;
+    const id = notifyId(req, reply); if (!id) return reply;
     return runDirect(req, reply, 'notify.channel', id, { enabled: req.body.enabled, events: req.body.events });
   });
   fastify.post('/settings/sessions/revoke', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     repo.audit('owner', 'sessions.logout_all', null, null); reply.endAllSessions(req); return reply.redirect('/login');
   });
   fastify.post('/settings/revoke-all', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
-    if (!requireRecentTotp(req, reply, '/settings')) return;
+    if (!requireOwner(req, reply)) return reply;
+    if (!requireRecentTotp(req, reply, '/settings')) return reply;
     const n = repo.revokeAllGrants(); for (const r of repo.listPending()) repo.decideRequest(r.id, 'denied', 'web');
     repo.audit('owner', 'panic', null, { revoked: n });
     notify.security(t('notify.sec.panic'));
@@ -762,7 +762,7 @@ export async function registerWeb(fastify, ctx) {
   });
   // ---- запросы (статистика по журналу вызовов и заявкам)
   fastify.get('/stats', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const d = Number(req.query.d);
     const days = V.STATS_PERIODS.some(([p]) => p === d) ? d : 7;
     const agentId = typeof req.query.agent === 'string' && repo.getAgent(req.query.agent) ? req.query.agent : null;
@@ -778,7 +778,7 @@ export async function registerWeb(fastify, ctx) {
     }));
   });
   fastify.get('/audit', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!requireOwner(req, reply)) return reply;
     const before = req.query.before ? Number(req.query.before) : undefined;
     return html(reply, V.auditPage({ csrf: req.csrf, rows: repo.listAudit({ limit: 200, before }).map((r) => ({ ...r, meta: r.meta_json })) }));
   });
