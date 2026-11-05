@@ -1,0 +1,13 @@
+{
+  "name": "agentkeygate",
+  "owner": {
+    "name": "maximskorohod"
+  },
+  "plugins": [
+    {
+      "name": "agentkeygate",
+      "source": "./plugins/agentkeygate",
+      "description": "Temporary, owner-approved access to third-party APIs for AI agents: the agent gets a pass, never the key."
+    }
+  ]
+}

@@ -44,3 +44,47 @@ test('skills/agentkeygate/README.md: пути установки навыка и
   }
   assert.ok(sr.includes('AGENTKEYGATE_URL') && sr.includes('AGENTKEYGATE_TOKEN'), 'переменные окружения');
 });
+
+// ---- Пакет 6: плагин Claude Code ----
+
+test('marketplace.json: name, owner и запись плагина с source', () => {
+  const mp = json('.claude-plugin/marketplace.json');
+  assert.equal(mp.name, 'agentkeygate');
+  assert.ok(mp.owner && typeof mp.owner === 'object' && mp.owner.name, 'owner задан');
+  assert.equal(mp.plugins[0].name, 'agentkeygate');
+  assert.equal(mp.plugins[0].source, './plugins/agentkeygate');
+});
+
+test('plugin.json: name, версия из package.json, license, repository, userConfig', () => {
+  const pl = json('plugins/agentkeygate/.claude-plugin/plugin.json');
+  const version = json('package.json').version;
+  assert.equal(pl.name, 'agentkeygate');
+  assert.equal(pl.version, version, 'версия плагина равна версии package.json');
+  assert.equal(pl.license, 'Apache-2.0');
+  assert.match(pl.repository, /github\.com\/maximskorohod\/agentkeygate/);
+  assert.ok(pl.userConfig.mcp_url.description.includes('https://your-domain/mcp'), 'описание mcp_url: полный адрес');
+  assert.equal(pl.userConfig.agent_token.sensitive, true, 'agent_token sensitive');
+});
+
+test('.mcp.json плагина: http-сервер с user_config, без настоящих значений', () => {
+  const mcpj = json('plugins/agentkeygate/.mcp.json');
+  const srv = mcpj.mcpServers.agentkeygate;
+  assert.equal(srv.type, 'http');
+  assert.equal(srv.url, '${user_config.mcp_url}');
+  assert.equal(srv.headers.Authorization, 'Bearer ${user_config.agent_token}');
+  const text = read('plugins/agentkeygate/.mcp.json');
+  assert.ok(!/gwa_[A-Za-z0-9_-]{10,}|https:\/\/[a-z0-9.-]+\/mcp/.test(text), 'нет настоящих адресов и токенов');
+});
+
+test('README плагина: не короче 40 слов, команды установки', () => {
+  const readme = read('plugins/agentkeygate/README.md');
+  assert.ok(readme.split(/\s+/).length >= 40, `слов: ${readme.split(/\s+/).length}`);
+  assert.ok(readme.includes('claude plugin marketplace add maximskorohod/agentkeygate'));
+  assert.ok(readme.includes('claude plugin install agentkeygate@agentkeygate'));
+});
+
+test('копия навыка в плагине совпадает побайтно с skills/agentkeygate', () => {
+  const same = (a, b) => fs.readFileSync(path.join(root, a)).equals(fs.readFileSync(path.join(root, b)));
+  assert.ok(same('skills/agentkeygate/SKILL.md', 'plugins/agentkeygate/skills/agentkeygate/SKILL.md'), 'SKILL.md');
+  assert.ok(same('skills/agentkeygate/scripts/gw.sh', 'plugins/agentkeygate/skills/agentkeygate/scripts/gw.sh'), 'gw.sh');
+});
