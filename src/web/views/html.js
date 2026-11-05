@@ -221,6 +221,7 @@ ${body}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="same-origin">
 <title>${title} · ${t('app.name')}</title>
+<link rel="icon" href="/public/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/public/style.css">
 <script src="/public/app.js" defer></script>
 </head>

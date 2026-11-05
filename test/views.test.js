@@ -136,7 +136,8 @@ test('все страницы: скрипт только app.js, без инла
     }
     assert.ok(!out.includes('style='), `${name}: есть style=`);
     assert.ok(!/(src|href|action)="https?:/.test(out), `${name}: внешняя ссылка в атрибуте`);
-    assert.ok(!/<link (?!rel="stylesheet" href="\/public\/style\.css")/.test(out), `${name}: лишний link`);
+    assert.ok(!/<link (?!rel="stylesheet" href="\/public\/style\.css"|rel="icon" href="\/public\/favicon\.svg" type="image\/svg\+xml")/.test(out), `${name}: лишний link`);
+    assert.ok(out.includes('<link rel="icon" href="/public/favicon.svg" type="image/svg+xml">'), `${name}: нет favicon`);
   }
 });
 

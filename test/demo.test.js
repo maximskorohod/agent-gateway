@@ -300,6 +300,7 @@ test('3. allowlist: закрытые маршруты → 404, разрешён�
   for (const p of ['/keys/demo', '/agents', '/stats', '/audit', '/keys/new', '/keys/new/demo']) assert.equal((await c.get(p)).status, 200, p);
   assert.equal((await c.get('/healthz')).status, 200);
   assert.equal((await c.get('/public/style.css')).status, 200);
+  assert.equal((await c.get('/public/favicon.svg')).status, 200);
   // закрыто целиком
   for (const p of ['/settings', '/settings/password', '/settings/notify/slack', '/setup', '/setup/x', '/l/x', '/totp', '/welcome', '/pending/x', '/keys/new/openai', '/robots.txt', '/v1/proxy/openai/x']) {
     const r = await c.get(p);
