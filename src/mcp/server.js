@@ -32,6 +32,7 @@ const TOOLS = [
     name: 'list_services',
     description: 'List services whose keys are bound to this agent, with limits, data filter and the state of the access pass in this session.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { title: 'List services', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'request_access',
@@ -48,6 +49,7 @@ const TOOLS = [
       required: ['service', 'reason'],
       additionalProperties: false,
     },
+    annotations: { title: 'Request access', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: 'check_request',
@@ -58,6 +60,7 @@ const TOOLS = [
       required: ['request_id'],
       additionalProperties: false,
     },
+    annotations: { title: 'Check request', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'call',
@@ -75,6 +78,7 @@ const TOOLS = [
       required: ['service', 'method', 'path'],
       additionalProperties: false,
     },
+    annotations: { title: 'Call', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
   },
 ];
 

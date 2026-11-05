@@ -663,6 +663,32 @@ test('клиент SDK по Streamable HTTP: initialize, tools/list, list_servic
   assert.ok(audits(app, 'mcp.session.close').some((x) => x.actor === `agent:${w.agent.id}` && x.meta.reason === 'client'));
 });
 
+// ---- аннотации инструментов (ТЗ 1.0.2, пакет 3) ----
+
+test('аннотации: title и подсказки readOnly/destructive/idempotent/openWorld приходят клиенту в tools/list', async () => {
+  const w = await world(app, base);
+  const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { authorization: `Bearer ${w.agent.token}` } } });
+  const client = new Client({ name: 'annot-client', version: '1.0' });
+  await client.connect(transport);
+  const tools = (await client.listTools()).tools;
+  await client.close();
+  const want = {
+    list_services: ['List services', true, false, true, false],
+    request_access: ['Request access', false, false, false, false],
+    check_request: ['Check request', true, false, true, false],
+    call: ['Call', false, true, false, true],
+  };
+  assert.deepEqual(tools.map((t) => t.name), Object.keys(want));
+  for (const t of tools) {
+    const [title, ro, destructive, idem, open] = want[t.name];
+    assert.deepEqual(
+      { title: t.annotations?.title, readOnlyHint: t.annotations?.readOnlyHint, destructiveHint: t.annotations?.destructiveHint, idempotentHint: t.annotations?.idempotentHint, openWorldHint: t.annotations?.openWorldHint },
+      { title, readOnlyHint: ro, destructiveHint: destructive, idempotentHint: idem, openWorldHint: open },
+      t.name,
+    );
+  }
+});
+
 // ---- 21. токены gwt_ нигде не видны (последним: сканирует всё накопленное) ----
 
 test('21: gwt_ токен не встречается в ответах, audit и логах', async () => {
