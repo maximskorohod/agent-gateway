@@ -63,14 +63,21 @@ After the setup wizard, the site opens `/welcome` with onboarding cards for the 
 
 ## Connect an agent
 
-The owner creates an agent in the web UI (Agents). The agent token (`gwa_...`) is shown once. There are four ways to connect.
+The owner creates an agent in the web UI (Agents). The agent token (`gwa_...`) is shown once. The card for every client below lives on `/welcome` of your gateway: clicking it creates the agent and prints the snippet for that client. Snippets keep the token out of the config where the client supports environment variables (`AGENTKEYGATE_TOKEN`) or a hidden input; the token itself is shown on the card once.
 
-| Way | Where | Use it for |
-| --- | --- | --- |
-| Onboarding cards | `/welcome` on your gateway | Ready snippets for ChatGPT, Claude Code, Cursor, Claude Desktop, and curl. The token is shown once on the card. |
-| REST API | `/v1` | Scripts and any HTTP client. |
-| MCP server | `/mcp` | MCP clients. Tools: `list_services`, `request_access`, `check_request`, `call`. |
-| Agent Skill | [skills/agentkeygate](skills/agentkeygate/SKILL.md) | Claude Code and other agents that load skills. Helper script `gw.sh` needs `curl` and `jq`. |
+| Agent | Where the config goes | Transport | Checked live |
+| --- | --- | --- | --- |
+| Claude Code | terminal: a `claude mcp add` command | Streamable HTTP | no |
+| Codex | `~/.codex/config.toml` | Streamable HTTP | no |
+| Cursor | `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project) | Streamable HTTP | no |
+| VS Code | `.vscode/mcp.json` in the workspace | Streamable HTTP | no |
+| Gemini CLI | `~/.gemini/settings.json` | Streamable HTTP | no |
+| Hermes | the agent's YAML config, `mcp_servers` | Streamable HTTP | no |
+| OpenClaw | the agent's JSON config, `mcp.servers` | Streamable HTTP | no |
+| Claude Desktop | `claude_desktop_config.json`, via `mcp-remote` (native header support in the app is a closed beta) | stdio through mcp-remote | no |
+| ChatGPT | an Actions schema on a custom GPT; MCP needs OAuth, which the gateway does not offer yet | REST (Actions schema) | no |
+
+`Checked live` says whether the snippet has been verified against the running client; `no` means it follows the client's documentation and has not been verified yet. Any HTTP client can also use the REST API and the MCP endpoint below, and agents that load skills can use [skills/agentkeygate](skills/agentkeygate/SKILL.md) (helper script `gw.sh` needs `curl` and `jq`; where to put the skill: [skills/agentkeygate/README.md](skills/agentkeygate/README.md)).
 
 ### REST
 
