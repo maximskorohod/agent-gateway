@@ -50,7 +50,10 @@ export const csrfPlugin = fp(async function (fastify, { secure, repo, publicUrl 
     if (req.method !== 'POST' || req.url.startsWith('/v1/') || req.url === '/mcp' || req.url.startsWith('/mcp?')) return;
     if (!originOk(req)) return deny(reply, 'error.bad_origin');
     const sent = req.body?._csrf;
-    if (typeof sent !== 'string' || sent.length !== req.csrf.length || !crypto.timingSafeEqual(Buffer.from(sent), Buffer.from(req.csrf))) {
+    // длины в байтах: символы не ASCII дают буфер длиннее строки, а timingSafeEqual на разных длинах бросает исключение
+    const given = Buffer.from(typeof sent === 'string' ? sent : '');
+    const expected = Buffer.from(req.csrf);
+    if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
       return deny(reply, 'error.form_expired');
     }
   });

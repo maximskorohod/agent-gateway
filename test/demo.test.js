@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import net from 'node:net';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -47,7 +48,7 @@ async function boot(extra = {}) {
   cleanup.push(() => app.stop());
   const base = `http://127.0.0.1:${app.fastify.server.address().port}`;
   const jar = new Map();
-  const c = { app, base, dataDir, token: '', ip: `10.9.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` };
+  const c = { app, base, dataDir, token: '', ip: `10.9.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`, cookies: () => [...jar].map(([k, v]) => `${k}=${v}`) };
   const store = (res) => { for (const s of res.headers.getSetCookie?.() || []) { const [kv, ...attrs] = s.split(';'); const [k, v] = kv.split('='); if (attrs.some((a) => /max-age=0/i.test(a))) jar.delete(k); else jar.set(k, v); } };
   const cookie = () => [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
   const headers = (more = {}) => ({ cookie: cookie(), 'x-forwarded-for': c.ip, ...more });
@@ -199,7 +200,6 @@ test('3. экраны демо без кнопок, закрытых allowlist-�
   assert.match(key, /<input type="hidden" name="approval" value="web_button">/);
   const agents = (await c.get('/agents')).text2;
   for (const a of ['disable', 'enable', 'delete']) assert.ok(!agents.includes(`/agents/demo-agent/${a}"`), a);
-  assert.match(agents, /action="\/agents\/demo-agent\/keys"/, 'привязка ключей остаётся');
   assert.doesNotMatch((await c.get('/audit')).text2, /href="\/settings"/);
   assert.doesNotMatch((await c.get('/keys/new/demo')).text2, /value="web_code"/);
   // все оставшиеся формы и ссылки экранов не ведут в 404
@@ -207,6 +207,97 @@ test('3. экраны демо без кнопок, закрытых allowlist-�
     const page = (await c.get(p)).text2;
     for (const m of page.matchAll(/<a [^>]*href="(\/[^"#]*)"/g)) assert.notEqual((await c.get(m[1].replace(/&amp;/g, '&'))).status, 404, `${p} → ${m[1]}`);
   }
+});
+
+test('аудит: брошенные заявки не закрывают сценарий, снимается самая старая', async () => {
+  const c = await boot(); await c.login();
+  for (let i = 0; i < 3; i++) await c.post('/demo/simulate');
+  const first = c.app.repo.listPending()[0].id;
+  assert.equal(c.app.repo.listPending().length, 3);
+  c.ip = `10.60.${Math.floor(Math.random() * 250)}.9`;
+  await c.get('/login');
+  const r = await c.post('/demo/simulate');
+  assert.equal(r.status, 302);
+  assert.match((await c.get('/')).text2, /class="btn primary" href="\/requests\//, 'новый посетитель на шаге 2');
+  const pending = c.app.repo.listPending();
+  assert.equal(pending.length, 3);
+  assert.ok(!pending.some((x) => x.id === first), 'старейшая снята');
+  assert.equal(c.app.repo.getRequest(first).status, 'denied');
+});
+
+test('аудит: посевные ключ и агент нельзя сломать настройками, свой ключ можно', async () => {
+  const c = await boot(); await c.login();
+  const base = { label: 'x', mode: 'ask', approval: 'web_button', max_ttl: '3600', max_calls: '10', max_parallel: '2' };
+  await c.get('/keys/demo');
+  for (const p of ['/keys/demo/policy', '/keys/%64emo/policy']) assert.equal((await c.post(p, { ...base, mode: 'deny' })).status, 400, p);
+  for (const extra of [{ expires_at: '2020-01-01' }, { days: '1' }, { from: '10:00', to: '11:00' }]) {
+    assert.equal((await c.post('/keys/demo/policy', { ...base, ...extra })).status, 400, Object.keys(extra)[0]);
+  }
+  assert.equal(c.app.repo.getCredential('demo').mode, 'ask');
+  assert.equal((await c.post('/keys/demo/policy', { ...base, mode: 'always', always_for: '3600' })).status, 302, 'разрешённое сохраняется');
+  assert.equal((await c.post('/keys/demo/policy', base)).status, 302);
+  // фильтр: без сделок вызов шага 3 был бы закрыт
+  assert.equal((await c.post('/keys/demo/filter', { entities_form: '1', enabled: '1', ent_contacts: '1' })).status, 400);
+  assert.equal((await c.post('/keys/demo/filter', { entities_form: '1', enabled: '1', ent_deals: '1', f_deals: 'ID' })).status, 302);
+  assert.equal((await c.post('/keys/demo/filter', { entities_form: '1' })).status, 302, 'выключить фильтр можно');
+  // агент
+  for (const p of ['/agents/demo-agent/keys', '/agents/%64emo-agent/keys']) assert.equal((await c.post(p, { keys_all: '0' })).status, 400, p);
+  assert.equal((await c.post('/agents/demo-agent/keys', { keys_all: '1' })).status, 302);
+  // экраны: на посевных скрыто, на своём ключе есть
+  const page = (await c.get('/keys/demo')).text2;
+  assert.doesNotMatch(page, /name="mode" value="deny"/);
+  assert.doesNotMatch(page, /name="expires_at"/);
+  assert.doesNotMatch((await c.get('/agents')).text2, /action="\/agents\/demo-agent\/keys"/);
+  await c.get('/keys/new/demo');
+  assert.equal((await c.post('/keys/new/demo', { ...base, key: 'demo-' + crypto.randomBytes(5).toString('hex') })).status, 302);
+  const own = c.app.repo.listCredentials().find((x) => x.id !== 'demo');
+  const ownPage = (await c.get(`/keys/${own.id}`)).text2;
+  assert.match(ownPage, /name="mode" value="deny"/);
+  assert.equal((await c.post(`/keys/${own.id}/policy`, { ...base, mode: 'deny' })).status, 302);
+  assert.equal(c.app.repo.getCredential(own.id).mode, 'deny');
+});
+
+test('аудит: запрос без сессии и CSRF не тратит общий лимит создания', async () => {
+  const c = await boot();
+  for (let i = 0; i < 25; i++) {
+    const r = await fetch(`${c.base}/agents`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-forwarded-for': `10.61.${i}.1` }, body: '_csrf=x' });
+    assert.equal(r.status, 403, `анонимный ${i}`);
+  }
+  await c.login();
+  assert.equal((await c.post('/agents', { name: 'after', keys_all: '1' })).status, 200, 'посетитель не заблокирован');
+});
+
+test('аудит: POST, начатый до сброса и дочитанный после него, отклоняется', async () => {
+  const c = await boot(); await c.login();
+  const body = new URLSearchParams({ _csrf: c.token, name: 'after-reset', keys_all: '1' }).toString();
+  const head = `POST /agents HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nCookie: ${[...c.cookies()].join('; ')}\r\nX-Forwarded-For: ${c.ip}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n`;
+  const sock = net.connect(c.app.fastify.server.address().port, '127.0.0.1');
+  let answer = '';
+  sock.on('data', (d) => { answer += d; });
+  const closed = new Promise((resolve) => { sock.on('close', resolve); });
+  await new Promise((resolve) => { sock.once('connect', resolve); });
+  sock.write(head + body.slice(0, 5));
+  await new Promise((resolve) => { setTimeout(resolve, 100); });
+  await c.app.demoReset.runOnce();
+  sock.write(body.slice(5));
+  await closed;
+  assert.match(answer, /^HTTP\/1\.1 503/);
+  assert.deepEqual(c.app.repo.listAgents().map((a) => a.id), ['demo-agent']);
+});
+
+test('аудит: символы не ASCII в подписи пропуска и в CSRF дают 401 и 403, а не 500', async () => {
+  const c = await boot(); await c.login();
+  const forged = await fetch(`${c.base}/v1/proxy/demo/deals`, { headers: { authorization: `Bearer gwt_abc.${'é'.repeat(43)}`, 'x-forwarded-for': c.ip } });
+  assert.equal(forged.status, 401);
+  assert.equal((await c.post('/demo/simulate', { _csrf: 'é'.repeat(c.token.length) })).status, 403);
+});
+
+test('аудит: /login ограничен по адресу, другой адрес не задет', async () => {
+  const c = await boot();
+  for (let i = 0; i < 10; i++) assert.equal((await c.get('/login')).status, 302, `вход ${i}`);
+  assert.equal((await c.get('/login')).status, 429);
+  c.ip = '10.62.0.1';
+  assert.equal((await c.get('/login')).status, 302, 'другой адрес');
 });
 
 test('1. формат ключа посетителя совпадает с каталогом', () => {

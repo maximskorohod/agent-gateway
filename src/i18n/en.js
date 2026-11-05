@@ -593,6 +593,8 @@ export default {
   'demo.err.limit': 'Demo limit reached. Data resets hourly.',
   'demo.err.too_long': 'The value is too long for the demo.',
   'demo.err.approval': 'The demo supports only button approval on the site.',
+  'demo.err.seeded': 'This setting would break the demo for everyone. Add your own demo key to try it.',
+  'demo.seeded_hint': 'On this shared key Deny, schedule and expiry are off so the demo keeps working for everyone. Add your own demo key to try them.',
   'demo.err.rate_limited': 'Too many requests. Try again in a minute.',
   'demo.err.resetting': 'The demo is resetting. Try again in a few seconds.',
   'catalog.name.demo': 'Demo CRM',

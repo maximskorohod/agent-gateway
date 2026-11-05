@@ -232,6 +232,11 @@ function secretForms(provider, secret) {
     const i = secret.indexOf(':');
     if (i >= 0) bases.push(secret.slice(i + 1));
   }
+  // Вебхук «id/код»: сам код и есть секрет, сервис может вернуть его отдельно от id
+  if (provider?.builder === 'webhook') {
+    const i = secret.lastIndexOf('/');
+    if (i >= 0) bases.push(secret.slice(i + 1));
+  }
   const out = new Set();
   for (const s of bases) {
     out.add(s);
@@ -239,10 +244,12 @@ function secretForms(provider, secret) {
     out.add(Buffer.from(s, 'utf8').toString('base64'));
     // JSON-экранированная форма (", \, управляющие) и вариант с \uXXXX для не-ASCII: сервис может отдать секрет в JSON-строке
     const j = JSON.stringify(s).slice(1, -1);
-    out.add(j);
     const u = (hex) => j.replace(/[^\x00-\x7f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')[hex]()}`);
-    out.add(u('toLowerCase'));
-    out.add(u('toUpperCase'));
+    // PHP json_encode по умолчанию пишет «/» как «\/», так отвечает Bitrix24
+    for (const form of [j, u('toLowerCase'), u('toUpperCase')]) {
+      out.add(form);
+      out.add(form.replaceAll('/', '\\/'));
+    }
   }
   // Длинные формы первыми: короткая не должна разрезать длинную до замены.
   return [...out].filter((s) => s.length >= 4).sort((a, b) => b.length - a.length);

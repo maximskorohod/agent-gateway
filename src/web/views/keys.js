@@ -2,6 +2,7 @@
 import { html, raw, form, layout, enc, fmtDate, fmtDuration, plural, isoDate, keyName, isDemo } from './html.js';
 import { t, hasKey, providerHint } from '../../i18n.js';
 import { normalizeFilter, protectionOf, defaultFilterFor } from '../../core/filter.js';
+import { DEMO_CREDENTIAL_ID } from '../../demo/reset.js';
 
 const MODE_OPTIONS = ['ask', 'always', 'deny'];
 const ALWAYS_FOR = [[3600, 'policy.for_3600'], [86400, 'policy.for_86400'], [604800, 'policy.for_604800'], ['forever', 'policy.for_forever']];
@@ -44,7 +45,7 @@ function alwaysForSelect(v) {
  * Настройки ключа: на виду только режим (спрашивать / без вопросов на время / запретить),
  * остальное — в свёрнутом «Дополнительно». Общий для формы ключа и страницы ключа.
  */
-function policyFields(v = {}, { telegramConnected = false, sensitive = false } = {}) {
+function policyFields(v = {}, { telegramConnected = false, sensitive = false, locked = false } = {}) {
   const win = v.window ?? {};
   const days = (win.days ?? v.days ?? []).map(Number);
   const mode = MODE_OPTIONS.includes(v.mode) ? v.mode : DEFAULTS.mode;
@@ -56,8 +57,9 @@ function policyFields(v = {}, { telegramConnected = false, sensitive = false } =
   return html`
     <fieldset>
       <legend>${t('policy.how')}</legend>
-      ${MODE_OPTIONS.map((m) => html`<label class="inline"><input type="radio" name="mode" value="${m}"${chk(mode === m)}> ${t(`policy.choice.${m}`)}</label>${m === 'always' ? alwaysForSelect(v) : ''}`)}
+      ${MODE_OPTIONS.filter((m) => !(locked && m === 'deny')).map((m) => html`<label class="inline"><input type="radio" name="mode" value="${m}"${chk(mode === m)}> ${t(`policy.choice.${m}`)}</label>${m === 'always' ? alwaysForSelect(v) : ''}`)}
       <p class="hint">${t(isDemo() ? 'demo.always_hint' : 'policy.always_hint')}</p>
+      ${locked ? html`<p class="hint">${t('demo.seeded_hint')}</p>` : ''}
       ${sensitive ? html`<div class="sensitive">
         <p class="hint">${t('policy.sensitive_warning')}</p>
         <label class="inline"><input type="checkbox" name="confirm_sensitive" value="1"> ${t('policy.sensitive_confirm')}</label>
@@ -86,7 +88,7 @@ function policyFields(v = {}, { telegramConnected = false, sensitive = false } =
           <input type="number" name="max_parallel" min="1" max="20" step="1" inputmode="numeric" value="${v.max_parallel ?? DEFAULTS.max_parallel}">
         </label>
       </div>
-      <fieldset>
+      ${locked ? '' : html`<fieldset>
         <legend>${t('policy.days')}</legend>
         ${DAYS.map((d) => html`<label class="inline"><input type="checkbox" name="days" value="${d}"${chk(days.includes(d))}> ${t(`policy.day.${d}`)}</label>`)}
       </fieldset>
@@ -98,7 +100,7 @@ function policyFields(v = {}, { telegramConnected = false, sensitive = false } =
       <label>${t('policy.expires')}
         <input type="date" name="expires_at" value="${expires}">
       </label>
-      <p class="hint">${t('policy.expires_hint')}</p>
+      <p class="hint">${t('policy.expires_hint')}</p>`}
     </details>
   `;
 }
@@ -471,7 +473,7 @@ export function keyDetail({ csrf, cred, provider, telegramConnected = false, fla
     ${iconRow(prov, `${prov.name} · ····${cred.last4}`)}
     <p class="muted small">${t('key.added', { date: fmtDate(cred.created_at) })}</p>
     ${form(`/keys/${id}/policy`, html`
-      ${policyFields(cred, { telegramConnected, sensitive: !!prov.sensitive })}
+      ${policyFields(cred, { telegramConnected, sensitive: !!prov.sensitive, locked: isDemo() && cred.id === DEMO_CREDENTIAL_ID })}
       <button class="btn primary" type="submit">${t('key.save')}</button>
     `, csrf)}
     ${prov.filter || protectionOf(prov).readOnly || protectionOf(prov).mask ? filterCard(cred, prov, csrf) : ''}

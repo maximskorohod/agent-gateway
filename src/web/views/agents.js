@@ -1,6 +1,7 @@
 // Экран агентов: список, привязка ключей, создание, токен (показывается один раз).
 import { html, raw, form, layout, enc, fmtDate, th, keyName, isDemo } from './html.js';
 import { t } from '../../i18n.js';
+import { DEMO_AGENT_ID } from '../../demo/reset.js';
 
 const chk = (cond) => (cond ? raw(' checked') : '');
 
@@ -51,13 +52,13 @@ function agentRow(a, csrf, credentials, ids, providers) {
           </details>`}
         </div>
       </div>
-      <details class="fold">
+      ${isDemo() && a.id === DEMO_AGENT_ID ? '' : html`<details class="fold">
         <summary>${t('agents.keys_edit')}</summary>
         ${form(`/agents/${id}/keys`, html`
           ${keyFields(credentials, { all: !!a.all_credentials, ids, providers })}
           <button class="btn primary" type="submit">${t('common.save')}</button>
         `, csrf)}
-      </details>
+      </details>`}
     </li>`;
 }
 

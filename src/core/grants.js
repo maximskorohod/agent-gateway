@@ -42,8 +42,10 @@ export function createGrantService({ repo, signingKey, logger }) {
       if (typeof token !== 'string' || !token.startsWith('gwt_')) return null;
       const [body, mac] = token.slice(4).split('.');
       if (!body || !mac) return null;
-      const expected = b64u(crypto.createHmac('sha256', key).update(body).digest());
-      if (expected.length !== mac.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(mac))) return null;
+      const expected = Buffer.from(b64u(crypto.createHmac('sha256', key).update(body).digest()));
+      const given = Buffer.from(mac);
+      // длины в байтах: символы не ASCII дают буфер длиннее строки, а timingSafeEqual на разных длинах бросает исключение
+      if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) return null;
       let payload;
       try { payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { return null; }
       if (!payload?.g || !payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) return null;

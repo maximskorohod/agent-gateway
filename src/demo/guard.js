@@ -12,7 +12,7 @@ import { errorPage } from '../web/views/error.js';
 import { clientKey } from '../web/client-key.js';
 import { t } from '../i18n.js';
 import { createDemoMock, DEMO_HOST } from './mock.js';
-import { createDemoReset, DEMO_CREDENTIAL_ID, DEMO_KEY_PATTERN } from './reset.js';
+import { createDemoReset, DEMO_AGENT_ID, DEMO_CREDENTIAL_ID, DEMO_KEY_PATTERN } from './reset.js';
 
 export { createDemoMock, createDemoReset };
 
@@ -154,6 +154,13 @@ export function createDemoTransport({ mock = createDemoMock() } = {}) {
 
 // ---- allowlist маршрутов
 
+/** Запрос ломает сценарий на посевном ключе: запрет, срок и окно отключают пропуска, фильтр без сделок закрывает вызов шага 3. */
+function seededKeyLocked(action, body) {
+  const filled = (v) => v !== undefined && String(v).trim() !== '';
+  if (action === 'filter') return body.enabled === '1' && body.ent_deals !== '1';
+  return body.mode === 'deny' || ['days', 'from', 'to', 'expires_at'].some((k) => filled(body[k]));
+}
+
 /** Класс лимита по IP: free (без лимита), site, api, mcp. */
 function classOf(pathname) {
   if (pathname === '/healthz' || pathname.startsWith('/public/')) return 'free';
@@ -175,8 +182,10 @@ export function demoRouteGuard(fastify, { repo, reset = null }) {
     mcp: createLimiter({ limit: 60, windowSec: 60 }),
     simulate: createLimiter({ limit: 6, windowSec: 60 }),
     requests: createLimiter({ limit: 10, windowSec: 60 }),
+    login: createLimiter({ limit: 10, windowSec: 60 }), // /login создаёт сессию: иначе один адрес вытесняет сессии всех посетителей
     create: createLimiter({ limit: CREATE_GLOBAL_MAX, windowSec: CREATE_GLOBAL_WINDOW_SEC }),
   };
+  fastify.decorateRequest('demoGeneration', 0);
   // Посетитель = IP (IPv6 сведён к /64, как на основном сайте): ротация адресов внутри сети лимиты не обходит
   const visitor = (req) => clientKey(req.ip);
   // сколько агентов и ключей создал посетитель с этого IP после последнего сброса
@@ -202,8 +211,9 @@ export function demoRouteGuard(fastify, { repo, reset = null }) {
     [GET, /^\/keys\/([^/]+)$/],
     [GET, /^\/(agents|stats|audit)$/],
     [['POST'], /^\/keys\/([^/]+)\/(policy|filter)$/, (m) => isDemoKey(dec(m[1]))],
-    [['POST'], /^\/keys\/new\/demo$/, (m, req) => (created('keys', visitor(req)) < MAX_KEYS - 1 && repo.listCredentials().length < TOTAL_KEYS && limiters.create.take('demo:create') ? true : 'limit')],
-    [['POST'], /^\/agents$/, (m, req) => (created('agents', visitor(req)) < MAX_AGENTS - 1 && repo.listAgents().length < TOTAL_AGENTS && limiters.create.take('demo:create') ? true : 'limit')],
+    // Общий лимит здесь только сверяется, списание в onResponse: запрос без сессии и CSRF не должен тратить бюджет всех посетителей
+    [['POST'], /^\/keys\/new\/demo$/, (m, req) => (created('keys', visitor(req)) < MAX_KEYS - 1 && repo.listCredentials().length < TOTAL_KEYS && limiters.create.peek('demo:create') ? true : 'limit')],
+    [['POST'], /^\/agents$/, (m, req) => (created('agents', visitor(req)) < MAX_AGENTS - 1 && repo.listAgents().length < TOTAL_AGENTS && limiters.create.peek('demo:create') ? true : 'limit')],
     [['POST'], /^\/agents\/([^/]+)\/keys$/, (m) => { const id = dec(m[1]); return id !== null && !!repo.getAgent(id); }],
     [GET, /^\/requests\/([^/]+)$/], // экран заявки: только показ, решение ниже
     [['POST'], /^\/requests\/([^/]+)\/(approve|deny)$/],
@@ -224,12 +234,15 @@ export function demoRouteGuard(fastify, { repo, reset = null }) {
 
   fastify.addHook('onSend', async (req, reply) => { reply.header('x-robots-tag', 'noindex'); });
 
-  // Успешное создание агента или ключа записывается на IP посетителя (ошибки валидации в счёт не идут)
+  // Успешное создание агента или ключа записывается на IP посетителя и в общий лимит. Успех: агент — страница с токеном (200),
+  // ключ — редирект на главную. Ошибки формы и редирект на вход в счёт не идут.
   fastify.addHook('onResponse', async (req, reply) => {
-    if (req.method !== 'POST' || reply.statusCode >= 400) return;
+    if (req.method !== 'POST') return;
     const p = (req.raw.url || '').split('?')[0];
-    const kind = p === '/agents' ? 'agents' : p === '/keys/new/demo' ? 'keys' : null;
+    const kind = p === '/agents' && reply.statusCode === 200 ? 'agents'
+      : p === '/keys/new/demo' && reply.statusCode === 302 && reply.getHeader('location') === '/' ? 'keys' : null;
     if (!kind) return;
+    limiters.create.take('demo:create');
     const key = visitor(req);
     created(kind, key); // сверка с номером сброса
     const map = made[kind];
@@ -242,6 +255,7 @@ export function demoRouteGuard(fastify, { repo, reset = null }) {
     const url = req.raw.url || '/';
     const q = url.indexOf('?');
     const p = q < 0 ? url : url.slice(0, q);
+    req.demoGeneration = reset?.generation ?? 0;
     // 1. сброс идёт: запросы получают 503 на время сброса (/healthz для проверок живости проходит)
     if (reset?.resetting && p !== '/healthz') {
       reply.header('retry-after', '2');
@@ -263,6 +277,7 @@ export function demoRouteGuard(fastify, { repo, reset = null }) {
     const classes = cls === 'free' ? [] : [cls];
     if (req.method === 'POST' && p === '/demo/simulate') classes.push('simulate');
     if (req.method === 'POST' && p === '/v1/grants') classes.push('requests');
+    if (p === '/login') classes.push('login');
     for (const c of classes) {
       if (!limiters[c].take(`demo:${c}:${visitor(req)}`)) return deny(reply, p, 429, 'rate_limited', 'demo.err.rate_limited');
     }
@@ -276,8 +291,18 @@ export function demoRouteGuard(fastify, { repo, reset = null }) {
 
   // Пользовательские поля ограничены: имя агента и метка ключа до 40 символов, подтверждение только кнопкой на сайте
   fastify.addHook('preHandler', async (req, reply) => {
-    if (req.method !== 'POST' || !req.body || typeof req.body !== 'object') return;
     const p = (req.raw.url || '').split('?')[0];
+    // Тело дочитано: запрос, начатый до сброса, не должен менять данные нового поколения (сессия и проверки — от старого)
+    if (reset && req.method !== 'GET' && req.method !== 'HEAD' && (reset.resetting || req.demoGeneration !== reset.generation)) {
+      reply.header('retry-after', '2');
+      return deny(reply, p, 503, 'demo_resetting', 'demo.err.resetting');
+    }
+    if (req.method !== 'POST' || !req.body || typeof req.body !== 'object') return;
+    // Посевные ключ и агент держат сценарий для всех: то, что его ломает, можно пробовать только на своём ключе
+    const seeded = /^\/keys\/([^/]+)\/(policy|filter)$/.exec(p);
+    if (seeded && dec(seeded[1]) === DEMO_CREDENTIAL_ID && seededKeyLocked(seeded[2], req.body)) return deny(reply, p, 400, 'seeded_locked', 'demo.err.seeded');
+    const agentKeys = /^\/agents\/([^/]+)\/keys$/.exec(p);
+    if (agentKeys && dec(agentKeys[1]) === DEMO_AGENT_ID && req.body.keys_all !== '1') return deny(reply, p, 400, 'seeded_locked', 'demo.err.seeded');
     const long = (v) => typeof v === 'string' && Array.from(v).length > MAX_LABEL;
     if (p === '/agents' && long(req.body.name)) return deny(reply, p, 400, 'too_long', 'demo.err.too_long');
     if (p === '/keys/new/demo' || /^\/keys\/[^/]+\/policy$/.test(p)) {

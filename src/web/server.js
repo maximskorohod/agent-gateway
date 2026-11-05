@@ -327,7 +327,13 @@ export async function registerWeb(fastify, ctx) {
       const agent = repo.getAgent(DEMO_AGENT_ID);
       const credential = repo.listCredentials().find((c) => c.provider === 'demo');
       if (!agent || !credential) { flash(req, 'error', t('demo.no_agent')); return reply.redirect('/'); }
-      const r = requests.submit({ agent, credential, ttl: 900, calls: 20, reason: t('demo.simulate_reason'), via: 'demo' });
+      const submit = () => requests.submit({ agent, credential, ttl: 900, calls: 20, reason: t('demo.simulate_reason'), via: 'demo' });
+      let r = submit();
+      // Потолок заявок на пару общий: брошенные заявки других посетителей не должны закрывать сценарий, снимаем самую старую
+      if (r.kind === 'too_many_pending') {
+        const oldest = repo.listPending().find((x) => x.agent_id === agent.id && x.credential_id === credential.id);
+        if (oldest) { await requests.decide({ requestId: oldest.id, approve: false, via: 'timeout' }); r = submit(); }
+      }
       if (r.kind === 'denied') flash(req, 'error', t('demo.simulate_failed', { reason: r.reason }));
       else if (r.kind === 'too_many_pending') flash(req, 'error', t('demo.simulate_failed', { reason: 'too_many_pending' }));
       else {

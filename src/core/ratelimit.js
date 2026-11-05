@@ -2,6 +2,11 @@
 export function createLimiter({ limit, windowSec }) {
   const hits = new Map();
   return {
+    /** Есть ли запас, без списания: для лимитов, которые тратятся только при успехе. */
+    peek(key) {
+      const now = Date.now();
+      return (hits.get(key) || []).filter((t) => now - t < windowSec * 1000).length < limit;
+    },
     take(key) {
       const now = Date.now();
       const arr = (hits.get(key) || []).filter((t) => now - t < windowSec * 1000);

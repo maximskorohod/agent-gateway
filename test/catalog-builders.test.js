@@ -9,6 +9,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { loadCatalog, buildInjection } from '../src/catalog.js';
+import { makeRedactor } from '../src/core/redact.js';
 import { initI18n, t } from '../src/i18n.js';
 import { openDb } from '../src/db/index.js';
 import { createRepo } from '../src/db/repo.js';
@@ -83,9 +84,21 @@ test('Twilio: Account SID + токен → Basic base64(SID:токен), фор�
 test('secretForms: обычный секрет — сырая, URL и base64; короткие значения не попадают', () => {
   const p = catalog.get('openai');
   const s = 'fake key/with+chars=1'.replace(' ', '-');
-  assert.deepEqual(new Set(catalog.secretForms(p, s)), new Set([s, encodeURIComponent(s), b64(s)]));
+  assert.deepEqual(new Set(catalog.secretForms(p, s)), new Set([s, s.replaceAll('/', '\\/'), encodeURIComponent(s), b64(s)]));
   assert.deepEqual(catalog.secretForms(p, ''), []);
   assert.deepEqual(catalog.secretForms(p, 'abc'), [b64('abc')].filter((x) => x.length >= 4));
+});
+
+test('secretForms: вебхук Bitrix24 — форма с «\\/» и код отдельно, redactor вычищает ответ PHP json_encode', () => {
+  const p = catalog.get('bitrix24');
+  const code = 'fakecode' + 'x'.repeat(8);
+  const forms = catalog.secretForms(p, `17/${code}`);
+  assert.ok(forms.includes(`17\\/${code}`), 'форма с экранированным слэшем');
+  assert.ok(forms.includes(code), 'код без id');
+  const body = JSON.stringify({ a: 'x' }).replace('x', `https:\\/\\/portal\\/rest\\/17\\/${code}\\/ and ${code}`);
+  const r = makeRedactor(forms);
+  const out = Buffer.concat([r.push(Buffer.from(body)), r.flush()]).toString();
+  assert.ok(!out.includes(code), 'кода в ответе нет');
 });
 
 // ---- 3. Zendesk
