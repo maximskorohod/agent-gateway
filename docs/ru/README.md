@@ -111,7 +111,7 @@ curl -s https://gw.example.com/v1/proxy/gemini/v1beta/models \
 
 ### MCP
 
-Streamable HTTP на `/mcp`. Каждый запрос идёт с `Authorization: Bearer gwa_...` (токен агента). Пропуска остаются на сервере, модель их не видит. Браузерным MCP-клиентам нужен их origin в `GW_MCP_ORIGINS` (через запятую). Клиенты без заголовка `Origin` (CLI, десктоп) работают как есть. `GW_MCP_ENABLED=0` выключает адрес. Контракт инструментов: [access-mcp.md](../contracts/access-mcp.md).
+Streamable HTTP на `/mcp`. Каждый запрос идёт с `Authorization: Bearer gwa_...` (токен агента). Пропуска остаются на сервере, модель их не видит. Браузерным MCP-клиентам нужен их origin в `GW_MCP_ORIGINS` (через запятую). Клиенты без заголовка `Origin` (CLI, десктоп) работают как есть. `GW_MCP_ENABLED=0` выключает адрес. Описание инструментов: [docs/ARCHITECTURE.md](../ARCHITECTURE.md#mcp-tool-reference) (на английском).
 
 ## Фильтр данных
 
@@ -192,7 +192,9 @@ Streamable HTTP на `/mcp`. Каждый запрос идёт с `Authorizatio
 
 ## Статус
 
-Версия 1.0: один владелец, self-hosted. Интерфейс по умолчанию английский, русский включается `GW_LANG=ru`. Сообщения установочного скрипта на русском. `docs/DEPLOY.md` на английском, русская версия в `docs/ru/DEPLOY.md`.
+Версия 1.0: один владелец, self-hosted. Интерфейс по умолчанию английский, русский включается `GW_LANG=ru`. Сообщения установочного скрипта на английском. `docs/DEPLOY.md` на английском, русская версия в `docs/ru/DEPLOY.md`.
+
+В этой версии вживую на сервере пока не проверены: одобрение через Telegram, уведомления SMTP, сейф `ssm` на AWS, Docker с настоящим сертификатом Caddy, Atlassian и Airtable. Сообщения о результатах приветствуются.
 
 ## Планы
 

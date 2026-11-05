@@ -1,29 +1,29 @@
-# systemd-юнит шлюза agent-gateway. Устанавливается setup.sh в /etc/systemd/system/gateway.service.
+# systemd unit of the agent-gateway service. Installed by setup.sh to /etc/systemd/system/gateway.service.
 
 [Unit]
-Description=Agent Gateway (шлюз временного доступа к API для ИИ-агентов)
+Description=Agent Gateway (temporary API access gateway for AI agents)
 Documentation=file:///opt/agent-gateway/app/docs/DEPLOY.md
 After=network-online.target
 Wants=network-online.target
-# Не прекращать попытки запуска при сбоях (fail-closed: агенты получают 503, а не падение юнита).
+# Never stop retrying after failures (fail-closed: agents get 503, the unit does not give up).
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-# Пользователь gateway создаётся setup.sh как системный (без shell).
-# DynamicUser здесь намеренно не используется: нужен стабильный uid, потому что на него
-# завязаны владение /var/lib/agent-gateway, правила nftables (meta skuid gateway),
-# IAM-доступ к SSM и владение бэкапами. Динамический uid менялся бы при каждом запуске.
+# The gateway user is created by setup.sh as a system user (no shell).
+# DynamicUser is intentionally not used: a stable uid is needed, because
+# ownership of /var/lib/agent-gateway, the nftables rules (meta skuid gateway),
+# IAM access to SSM and backup ownership depend on it. A dynamic uid would change on every start.
 User=gateway
 Group=gateway
 EnvironmentFile=/etc/agent-gateway/env
 WorkingDirectory=/opt/agent-gateway/app
-# DEP0040: встроенный punycode зовёт tr46 из цепочки grammy → node-fetch@2; другие предупреждения видны.
+# DEP0040: the built-in punycode is called by tr46 from the chain grammy -> node-fetch@2; other warnings stay visible.
 ExecStart=/usr/bin/node --disable-warning=DEP0040 bin/gateway.js start
 Restart=always
 RestartSec=3
 
-# ---- харденинг ----
+# ---- hardening ----
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/var/lib/agent-gateway
@@ -35,41 +35,41 @@ ProtectControlGroups=yes
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictNamespaces=yes
 LockPersonality=yes
-# Нужно no: V8 (JIT) создаёт исполняемые страницы памяти; с yes Node не запустится.
+# Must be no: V8 (JIT) creates executable memory pages; with yes Node will not start.
 MemoryDenyWriteExecute=no
 LimitCORE=0
 LimitNOFILE=65536
 UMask=0077
 
-# ---- дополнительный харденинг (Н-9) ----
-# ПРОВЕРИТЬ НА СЕРВЕРЕ: `systemd-analyze security gateway` (оценка экспозиции) и
-# `journalctl -u gateway -n 50` после рестарта: юнит должен подняться и отвечать на /healthz.
-# Порту 8080 и чтению /etc/ssl (AWS SDK, TLS к провайдерам) привилегии не нужны:
-# ProtectSystem=strict оставляет /etc и /usr доступными на чтение, AF_INET/AF_INET6 разрешены выше.
-# Ни одной capability: порт > 1024, raw-сокеты и смена владельца файлов не нужны.
+# ---- additional hardening (N-9) ----
+# CHECK ON THE SERVER: `systemd-analyze security gateway` (exposure score) and
+# `journalctl -u gateway -n 50` after a restart: the unit must start and answer on /healthz.
+# Port 8080 and reading /etc/ssl (AWS SDK, TLS to providers) need no privileges:
+# ProtectSystem=strict keeps /etc and /usr readable, AF_INET/AF_INET6 are allowed above.
+# No capabilities at all: the port is above 1024, raw sockets and changing file owners are not needed.
 CapabilityBoundingSet=
 AmbientCapabilities=
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectClock=yes
 ProtectHostname=yes
-# Чужие процессы не видны; /proc ограничен каталогами процессов (Node читает только /proc/self).
+# Other processes are hidden; /proc is limited to process directories (Node reads only /proc/self).
 ProtectProc=invisible
 ProcSubset=pid
 RestrictSUIDSGID=yes
 RestrictRealtime=yes
 RemoveIPC=yes
 SystemCallArchitectures=native
-# Фильтр системных вызовов: набор @system-service минус привилегированные вызовы.
-# Риск: если Node не стартует (в журнале «Bad system call», SIGSYS), сначала уберите вторую строку.
+# System call filter: the @system-service set minus privileged calls.
+# Risk: if Node does not start (the journal shows "Bad system call", SIGSYS), remove the second line first.
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged
-# @resources (setrlimit, prlimit) НЕ запрещаем: Node при старте поднимает RLIMIT_NOFILE через setrlimit,
-# запрет мог бы уронить запуск. Включать только после проверки на сервере:
+# @resources (setrlimit, prlimit) is NOT blocked: Node raises RLIMIT_NOFILE with setrlimit at startup,
+# so blocking it could break startup. Enable only after testing on the server:
 #SystemCallFilter=~@resources
 SystemCallErrorNumber=EPERM
-# Лимиты ресурсов. 512M рассчитано на VPS с 1 ГБ RAM и 1 ГБ swap (остальное: Caddy, ОС);
-# при OOM-убийстве поднимите значение. TasksMax ограничивает число потоков и процессов (форк-бомба).
+# Resource limits. 512M is sized for a VPS with 1 GB RAM and 1 GB swap (the rest: Caddy, OS);
+# raise the value if the unit gets OOM-killed. TasksMax limits the number of threads and processes (fork bomb).
 MemoryMax=512M
 TasksMax=256
 

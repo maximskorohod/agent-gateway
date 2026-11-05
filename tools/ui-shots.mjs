@@ -1,8 +1,8 @@
-// Скриншоты интерфейса глазами: поднимает локальный экземпляр
-// на чистом каталоге данных (сейф file, без сети), проходит мастер и вход программно, заводит тестовые ключи
-// с поддельными значениями, агента и заявку, затем снимает экраны headless Chrome по CDP.
-// Запуск: node tools/ui-shots.mjs [en|ru ...]   Результат: out/ui-review/<lang>/<экран>-<вариант>.png
-// Ключи поддельные (только формат), пароль и секрет 2FA — случайные на один прогон, нигде не сохраняются.
+// Interface screenshots for visual review: starts a local instance
+// on a clean data directory (file vault, no network), goes through the wizard and sign-in programmatically, creates test keys
+// with fake values, an agent and a request, then captures the screens with headless Chrome over CDP.
+// Run: node tools/ui-shots.mjs [en|ru ...]   Result: out/ui-review/<lang>/<screen>-<variant>.png
+// The keys are fake (format only); the password and the 2FA secret are random for one run and are not stored anywhere.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -13,15 +13,17 @@ import { totpAt } from '../src/auth/totp.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'out', 'ui-review');
 const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const WAIT_FRESH = Number(process.env.UI_WAIT_FRESH ?? 305); // окно свежести TOTP 300 с: ради экрана «было → стало»
+const WAIT_FRESH = Number(process.env.UI_WAIT_FRESH ?? 305); // TOTP freshness window is 300 s: needed for the "before -> after" screen
 const LANG_VARIANTS = {
   en: [['desktop', 'light'], ['desktop', 'dark'], ['mobile', 'light'], ['mobile', 'dark']],
   ru: [['desktop', 'light'], ['mobile', 'dark']],
 };
 const VIEW = { desktop: { width: 1366, height: 900, mobile: false }, mobile: { width: 375, height: 812, mobile: true } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Russian request reason for the ru screenshots, written as char codes to keep the source ASCII
+const RU_REASON = String.fromCharCode(1042, 1099, 1075, 1088, 1091, 1079, 1080, 1090, 1100, 32, 1089, 1076, 1077, 1083, 1082, 1080, 32, 1079, 1072, 32, 1085, 1077, 1076, 1077, 1083, 1102, 32, 1076, 1083, 1103, 32, 1086, 1090, 1095, 1105, 1090, 1072);
 
-// ---- HTTP-клиент сайта с cookie и CSRF
+// ---- site HTTP client with cookies and CSRF
 function client(base) {
   const jar = new Map();
   async function web(method, p, form) {
@@ -39,7 +41,7 @@ function client(base) {
   return { jar, web };
 }
 
-// Поля формы по умолчанию (как отправил бы браузер без правок): input/select/textarea внутри <form action="...">
+// Default form fields (as a browser would submit them without edits): input/select/textarea inside <form action="...">
 function formDefaults(html, actionRe) {
   const forms = [...html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/g)];
   const f = forms.find((m) => actionRe.test((m[1].match(/action="([^"]*)"/) || [])[1] || ''));
@@ -96,7 +98,7 @@ async function startChrome(port) {
       const { data } = await page('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width: v.width, height: Math.min(Math.ceil(s.height), 6000), scale: 1 } });
       fs.writeFileSync(file, Buffer.from(data, 'base64'));
     },
-    // Страница-ответ на POST: открыть форму, заполнить и отправить в самом браузере, снять результат
+    // Page returned for a POST: open the form, fill it in and submit in the browser itself, capture the result
     async shotSubmit(url, cookies, file, variant, js) {
       await this.shot(url, cookies, file, variant);
       const done = loaded(); await page('Runtime.evaluate', { expression: js }); await done; await sleep(250);
@@ -106,10 +108,10 @@ async function startChrome(port) {
       fs.writeFileSync(file, Buffer.from(data, 'base64'));
     },
     close() {
-      try { ws.close(); } catch { /* уже закрыт */ }
+      try { ws.close(); } catch { /* already closed */ }
       proc.kill();
-      // профиль Chrome на Windows освобождается не сразу; не удалился — останется в out/ (в .gitignore)
-      setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* занят */ } }, 3000);
+      // On Windows the Chrome profile is released with a delay; if it was not removed, it stays in out/ (in .gitignore)
+      setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* busy */ } }, 3000);
     },
   };
 }
@@ -137,7 +139,7 @@ async function runLang(lang, port, cdpPort) {
     }
   };
   try {
-    // мастер
+    // wizard
     await web('GET', new URL(link).pathname);
     await shot('01-setup-1-password', '/setup');
     const password = crypto.randomBytes(18).toString('base64url');
@@ -150,10 +152,10 @@ async function runLang(lang, port, cdpPort) {
     await shot('03-setup-3-telegram', '/setup');
     await post('/setup', { step: '3', mode: 'skip' }, '/setup');
     await shot('04-welcome', '/welcome');
-    // вход (отдельно, без сессии)
+    // sign-in (separately, without a session)
     const anon = [];
     await shot('05-login', '/login', anon);
-    // ключи с поддельными значениями нужного формата
+    // keys with fake values in the right format
     const keys = [
       ['hubspot', { key: 'pat-eu1-' + crypto.randomUUID() }],
       ['bitrix24', { webhook_url: 'https://acme.bitrix24.com/rest/1/' + crypto.randomBytes(8).toString('hex') + '/' }],
@@ -170,7 +172,7 @@ async function runLang(lang, port, cdpPort) {
         await chrome.shotSubmit(base + p, [...jar], file, variant, submit(fill).replace('${ACTION}', action)); shots.push(path.relative(OUT, file));
       }
     };
-    // неверный формат ключа: ошибка формы (в сеть ничего не уходит)
+    // wrong key format: form error (nothing goes to the network)
     await shotSubmit('09-key-form-error', '/keys/new/gemini', '\\/keys\\/new\\/gemini$', "f.elements.key.value = 'not-a-key'");
     for (const [slug, values] of keys) {
       const form = formDefaults((await web('GET', `/keys/new/${slug}`)).text, new RegExp(`/keys/new/${slug}$`));
@@ -183,7 +185,7 @@ async function runLang(lang, port, cdpPort) {
     const hub = await credOf('hubspot'); const btx = await credOf('bitrix24');
     await shot('10-key-hubspot-filter', `/keys/${hub}`);
     await shot('11-key-bitrix24-filter', `/keys/${btx}`);
-    // агент и заявка
+    // agent and request
     const agentsHtml = (await web('GET', '/agents')).text;
     const af = formDefaults(agentsHtml, /^\/agents$/) || {};
     const nameField = Object.keys(af).find((k) => /name/.test(k)) || 'name';
@@ -193,7 +195,7 @@ async function runLang(lang, port, cdpPort) {
     await shotSubmit('13-agent-created', '/agents', '^\\/agents$', `f.elements['${nameField}'].value = 'demo-' + Math.random().toString(36).slice(2, 7)`);
     let reqId;
     if (token) {
-      const g = await fetch(base + '/v1/grants', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ provider: 'hubspot', credential_id: hub, ttl: 900, calls: 20, reason: lang === 'ru' ? 'Выгрузить сделки за неделю для отчёта' : 'Export last week deals for the report' }) }).then((r) => r.json());
+      const g = await fetch(base + '/v1/grants', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ provider: 'hubspot', credential_id: hub, ttl: 900, calls: 20, reason: lang === 'ru' ? RU_REASON : 'Export last week deals for the report' }) }).then((r) => r.json());
       reqId = g.request_id;
     }
     await shot('14-home-with-request', '/');
@@ -202,12 +204,12 @@ async function runLang(lang, port, cdpPort) {
     await shot('18-audit', '/audit');
     await shot('19-stats', '/stats');
     await shot('20-not-found', '/keys/nope');
-    // вход: пароль → экран 2FA (отдельная сессия)
+    // sign-in: password -> 2FA screen (separate session)
     const c2 = client(base);
     const lp = (await c2.web('GET', '/login')).text;
     await c2.web('POST', '/login', { _csrf: csrfOf(lp), password });
     await shot('21-totp', '/totp', [...c2.jar]);
-    // «было → стало»: правка политики без свежего TOTP уходит в черновик
+    // "before -> after": a policy change without a fresh TOTP becomes a draft
     if (WAIT_FRESH > 0) {
       await sleep(WAIT_FRESH * 1000);
       const kp = (await web('GET', `/keys/${hub}`)).text;

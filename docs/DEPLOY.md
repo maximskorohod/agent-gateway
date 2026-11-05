@@ -89,7 +89,7 @@ At the end the script prints a one-time setup link:
 ...a link like https://gw.example.com/setup/<code>...
 ```
 
-(The script prints the first line in Russian.) The link is valid for 15 minutes and opens once. Open it in a browser and go through the wizard: password (at least 12 characters), 2FA (required, save the backup codes), Telegram (optional).
+The link is valid for 15 minutes and opens once. Open it in a browser and go through the wizard: password (at least 12 characters), 2FA (required, save the backup codes), Telegram (optional).
 
 Running `setup.sh` again is safe: it updates the code and configs and restarts the services. If the link expired before you finished the wizard, just run it again. After the wizard is completed, `setup.sh` does not call `gateway init` (it would reset the password and 2FA); you can open the wizard again with the `--init` flag or as described in section 4.
 

@@ -40,12 +40,11 @@ Use `npm.cmd`, `npx.cmd` instead of `npm`, `npx` if PowerShell blocks the `.ps1`
 - **Synchronous transactions.** better-sqlite3 transactions are synchronous. There is no `await` inside `db.transaction(...)`.
 - **Database access.** All queries go through `db/repo.js`.
 - **Short errors for users.** User-facing errors are short and have no stack traces. Internal errors go to `logger.error`.
-- **Module contracts.** Each module exports only what `docs/ARCHITECTURE.md` describes. If you change a signature there, update the document in the same pull request. Contracts for the 1.0 release are in `docs/contracts/`.
-- **No network in tests.** Tests do not call external services or AWS.
+- **Module contracts.** Each module exports only what `docs/ARCHITECTURE.md` describes. If you change a signature there, update the document in the same pull request.- **No network in tests.** Tests do not call external services or AWS.
 - **Line endings.** LF only. CRLF breaks shell scripts and configuration files. Set `git config core.autocrlf false` on Windows.
 - **Dependencies.** Add a new dependency only with an exact version at least two weeks old (`npm install --save-exact --ignore-scripts`), and explain why in the pull request.
 
-The design documents in `docs/` are in Russian. The contracts in `docs/ARCHITECTURE.md` are binding.
+Documentation is in English. Russian exists only in `docs/ru` (README and DEPLOY). Comments in code and tests are still mostly in Russian for now; fixes to them in English are welcome. The contracts in `docs/ARCHITECTURE.md` are binding.
 
 ## Pull requests
 

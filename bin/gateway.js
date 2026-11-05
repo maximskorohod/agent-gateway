@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // CLI: start | init | restore <file> | audit rotate [--days N] [--out <dir>] | key list
-// Логика команд в src/cli.js; здесь только разбор аргументов и сборка зависимостей.
+// Command logic is in src/cli.js; here only argument parsing and dependency wiring.
 import fs from 'node:fs';
 import { config } from '../src/config.js';
 import { openDb } from '../src/db/index.js';
@@ -16,7 +16,7 @@ const opt = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1
 
 async function main() {
   if (cmd === 'start') {
-    // Демо (GW_DEMO=1): вторая линия защиты от исходящих соединений ставится до всего остального; отказ изоляции в buildApp = выход с кодом 1 до listen
+    // Demo (GW_DEMO=1): the second line of defense against outgoing connections is set up before everything else; an isolation failure in buildApp = exit with code 1 before listen
     if (config.demo) (await import('../src/demo/guard.js')).installNetworkGuard();
     const { buildApp } = await import('../src/app.js');
     const app = await buildApp();

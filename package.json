@@ -1,6 +1,6 @@
 {
   "name": "agent-gateway",
-  "version": "1.0.0-dev",
+  "version": "1.0.0",
   "private": true,
   "description": "Self-hosted gateway that gives AI agents temporary, owner-approved access to APIs without ever seeing the keys",
   "license": "Apache-2.0",

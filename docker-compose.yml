@@ -14,7 +14,7 @@ services:
       # Listen on all interfaces inside the Docker network. Only Caddy can reach this port.
       GW_HOST: 0.0.0.0
       GW_DATA_DIR: /data
-      # Caddy в соседнем контейнере: доверяем X-Forwarded-For из подсетей Docker, иначе у всех клиентов будет IP Caddy
+      # Caddy runs in a neighbouring container: trust X-Forwarded-For from the Docker subnets, otherwise every client gets the Caddy IP
       GW_TRUST_PROXY: 172.16.0.0/12
     volumes:
       - gateway-data:/data

@@ -1,16 +1,16 @@
-# Вход: сменный модуль `auth/provider.js`
+# Login: the pluggable module `auth/provider.js`
 
-Веб-слой (`web/server.js`) и Telegram-бот (`tg/bot.js`) знают только интерфейс провайдера: как доказать, что человек — этот пользователь. Роли, сессии, cookie, CSRF, права, черновики 2FA и свежесть кода (`hasRecentTotp`) остаются у шлюза и от провайдера не зависят.
+The web layer (`web/server.js`) and the Telegram bot (`tg/bot.js`) know only the provider interface: how to prove that a person is this user. Roles, sessions, cookies, CSRF, permissions, 2FA drafts and code freshness (`hasRecentTotp`) stay with the gateway and do not depend on the provider.
 
-В 1.0 есть одна реализация, `local`. Облачных реализаций нет; раздел «Слот supabase» только описывает, как он встанет.
+Release 1.0 has one implementation, `local`. There are no cloud implementations; the "`supabase` slot" section only describes how that slot will work.
 
-## Выбор провайдера
+## Choosing a provider
 
-`GW_AUTH_PROVIDER` (`config.authProvider`). Пусто = `local` (значение по умолчанию лежит в `src/auth/provider.js`, строк с именами провайдеров вне `src/auth/` быть не должно: проверяет `test/auth-provider.test.js`). Неизвестное имя или не реализованный слот — ошибка при старте (`Unknown auth provider "x"`, `Auth provider "supabase" is not implemented in this release`).
+`GW_AUTH_PROVIDER` (`config.authProvider`). Empty = `local` (the default value lives in `src/auth/provider.js`; strings with provider names must not appear outside `src/auth/`, which `test/auth-provider.test.js` checks). An unknown name or an unimplemented slot is a startup error (`Unknown auth provider "x"`, `Auth provider "supabase" is not implemented in this release`).
 
-Тесты подставляют готовый провайдер: `buildApp({ auth: provider })` (только тесты, обходит `GW_AUTH_PROVIDER`).
+Tests inject a ready provider: `buildApp({ auth: provider })` (tests only, bypasses `GW_AUTH_PROVIDER`).
 
-## Интерфейс
+## Interface
 
 ```js
 /** AuthUser: { id, login, name, role:'owner'|'viewer', disabled, totpEnabled, tgChatId:number|null, externalId:string|null } */
@@ -21,42 +21,42 @@ verifyLogin({ login?, password, ip? })   // -> { ok:true, user } | { ok:false, r
 verifySecondFactor({ userId, code, ip? }) // -> { ok:true, kind:'totp'|'backup' } | { ok:false, reason:'bad'|'locked' }
 getUser(userId)                          // -> AuthUser | null
 getUserByTelegram(chatId)                // -> AuthUser | null
-// только при capabilities.manageCredentials:
+// only with capabilities.manageCredentials:
 setPassword(userId, newPassword)
 beginSecondFactorEnrollment(userId)      // -> { secret, otpauthUrl }
 confirmSecondFactorEnrollment(userId, secret, code) // -> { ok, backupCodes? }
-regenerateBackupCodes(userId)            // -> string[]  (дополнение к контракту: кнопка «новые резервные коды»)
-// только при capabilities.external:
+regenerateBackupCodes(userId)            // -> string[]  (an addition to the contract: the "new backup codes" button)
+// only with capabilities.external:
 startExternalLogin(req)                  // -> { redirect }
 finishExternalLogin(req)                 // -> { ok:true, user } | { ok:false, reason }
 ```
 
-Единственные места вызова:
+The only call sites:
 
-| Где | Вызов |
+| Where | Call |
 |---|---|
-| `POST /login` | `verifyLogin` (поле логина не обязательно, пока пользователь один) |
-| `GET /login` | при `capabilities.external` редирект на `startExternalLogin(req).redirect`, формы нет; `POST /login` без `capabilities.password` отвечает 404 |
-| `POST /totp`, код одобрения заявки (`ctx.verifyTotp`) | `verifySecondFactor` |
-| `/settings`, страница мастера | `getUser`, `setPassword`, `begin/confirmSecondFactorEnrollment`, `regenerateBackupCodes` |
-| `/settings/password`, `/settings/2fa/*` | только при `capabilities.manageCredentials`, иначе 404, на странице настроек блоки скрыты |
-| `tg/bot.js` | `getUserByTelegram` (кто из чатов считается владельцем; правило «только личный чат с самим собой», П-8, остаётся в боте), `getUser` для chat_id получателя |
+| `POST /login` | `verifyLogin` (the login field is optional while there is a single user) |
+| `GET /login` | with `capabilities.external`, a redirect to `startExternalLogin(req).redirect` and no form; `POST /login` without `capabilities.password` answers 404 |
+| `POST /totp`, the request approval code (`ctx.verifyTotp`) | `verifySecondFactor` |
+| `/settings`, the wizard page | `getUser`, `setPassword`, `begin/confirmSecondFactorEnrollment`, `regenerateBackupCodes` |
+| `/settings/password`, `/settings/2fa/*` | only with `capabilities.manageCredentials`, otherwise 404 and the blocks are hidden on the settings page |
+| `tg/bot.js` | `getUserByTelegram` (which chats count as the owner; the rule "only a private chat with yourself" stays in the bot), `getUser` for the recipient chat_id |
 
-Остаётся в веб-слое: rate-limit по IP до argon2, `lockKey` по IP /64, блокировки по IP и по сессии, общий потолок ошибок кода на сайт (30 в час), cookie и таблица сессий, CSRF, `can()`, `hasRecentTotp`. Провайдер возвращает `reason:'locked'`, веб-слой показывает одно сообщение.
+The web layer keeps: the per-IP rate limit before argon2, `lockKey` by IP /64, lockouts by IP and by session, the site-wide cap on code errors (30 per hour), cookies and the session table, CSRF, `can()`, `hasRecentTotp`. The provider returns `reason:'locked'` and the web layer shows one message.
 
-## Что делает `local`
+## What `local` does
 
-- Пока нет таблицы `users` (этап 6.4), единственный пользователь — владелец из строки `owner`: `id = OWNER_USER_ID`, `login 'owner'`, `name 'Owner'`, `role 'owner'`, `disabled false`. Пока пароль не задан (мастер не пройден), `getUser` возвращает `null`.
-- `verifyLogin`: argon2 (семафор на 1 в `auth/password.js`); неизвестный логин проверяется против фиктивного хэша, чтобы время не выдавало отсутствие пользователя. Блокировка `u:<id>|<ip>` (IPv6 по /64): 5 ошибок пароля с одного адреса, 15 минут; чужой перебор с другого адреса владельца не запирает. Глобальный счётчик `ug:<id>` с любых адресов (50 ошибок за 15 минут) вход НЕ блокирует: иначе распределённый перебор запирал бы владельца. При пороге `verifyLogin` возвращает `alert:'distributed'`, сайт шлёт владельцу уведомление (не чаще раза в 15 минут); вход всё равно требует второй фактор. Неизвестные логины считаются отдельно (`u:?<логин>`) и владельца не блокируют.
-- `verifySecondFactor`: TOTP (`decryptSecret` + `verifyTotp` с `repo.takeTotpStep(userId, шаг)`, повтор шага отвергается, переживает перезапуск) или резервный код (одноразовый, `repo.useBackupCode`). Блокировка `uc:<id>|<ip>`: 5 ошибок кода подряд с одного адреса, 15 минут; потолок 30 ошибок кода в час на пользователя с любых адресов (он защищает 6-значный TOTP от перебора и остаётся блокирующим; при достижении на сайте владельцу уходит `notify.totp_locked_hour`). Верный код обнуляет счётчики пароля и кода пользователя.
-- Счётчики блокировок живут в памяти экземпляра провайдера (как раньше у IP), не в базе.
+- Until a `users` table exists, the only user is the owner from the `owner` row: `id = OWNER_USER_ID`, `login 'owner'`, `name 'Owner'`, `role 'owner'`, `disabled false`. Until a password is set (the wizard is not finished), `getUser` returns `null`.
+- `verifyLogin`: argon2 (a semaphore of 1 in `auth/password.js`); an unknown login is checked against a dummy hash so that timing does not reveal whether the user exists. Lockout `u:<id>|<ip>` (IPv6 by /64): 5 password errors from one address, 15 minutes; someone else's guessing from another address does not lock the owner out. The global counter `ug:<id>` across all addresses (50 errors in 15 minutes) does NOT block login: otherwise distributed guessing would lock the owner out. At the threshold `verifyLogin` returns `alert:'distributed'` and the site sends the owner a notification (at most once per 15 minutes); login still requires the second factor. Unknown logins are counted separately (`u:?<login>`) and do not block the owner.
+- `verifySecondFactor`: TOTP (`decryptSecret` + `verifyTotp` with `repo.takeTotpStep(userId, step)`; a repeated step is rejected, and this survives a restart) or a backup code (one-time, `repo.useBackupCode`). Lockout `uc:<id>|<ip>`: 5 code errors in a row from one address, 15 minutes; a cap of 30 code errors per hour per user across all addresses (it protects the 6-digit TOTP from guessing and stays blocking; when it is reached the site sends the owner `notify.totp_locked_hour`). A correct code resets the user's password and code counters.
+- Lockout counters live in the memory of the provider instance (as the per-IP ones did before), not in the database.
 - `capabilities = { password:true, secondFactor:'local', external:false, manageCredentials:true }`.
 
-## Слот `supabase` (кода в 1.0 нет)
+## The `supabase` slot (no code in 1.0)
 
-- `users.external_id` = id пользователя в Supabase (таблица `users` появится на этапе 6.4).
+- `users.external_id` = the user id in Supabase (the `users` table does not exist yet).
 - `capabilities = { password:false, secondFactor:'provider', external:true, manageCredentials:false }`.
-- `startExternalLogin/finishExternalLogin` обменивают токен Supabase на `AuthUser` по `external_id`. Маршрут возврата с провайдера (`/login/callback`) добавится вместе с реализацией: в 1.0 вызывается только `startExternalLogin`.
-- Роль и `disabled_at` берутся из таблицы `users` шлюза, а не из Supabase. Сессии шлюза выдаются тем же `reply.startSession`.
-- `secondFactor:'provider'`: повторная проверка кода (`verifySecondFactor`) ведёт на страницу провайдера и возвращает `ok`; свежесть кода хранит сессия шлюза.
-- `getUser` в облаке — с кэшем по сессии; маршруты веб-слоя не меняются, ветвлений по имени провайдера в нём нет.
+- `startExternalLogin/finishExternalLogin` exchange a Supabase token for an `AuthUser` by `external_id`. The return route from the provider (`/login/callback`) will be added together with the implementation: in 1.0 only `startExternalLogin` is called.
+- The role and `disabled_at` come from the gateway's `users` table, not from Supabase. Gateway sessions are issued by the same `reply.startSession`.
+- `secondFactor:'provider'`: a repeated code check (`verifySecondFactor`) leads to the provider's page and returns `ok`; the freshness of the code is kept by the gateway session.
+- `getUser` in the cloud case uses a per-session cache; the web layer routes do not change, and there is no branching on the provider name in it.

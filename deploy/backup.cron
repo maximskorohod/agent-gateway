@@ -1,5 +1,5 @@
-# Ежесуточная резервная копия базы agent-gateway (03:17, от root).
-# Устанавливается setup.sh в /etc/cron.d/agent-gateway.
+# Daily backup of the agent-gateway database (03:17, as root).
+# Installed by setup.sh to /etc/cron.d/agent-gateway.
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 17 3 * * * root /opt/agent-gateway/app/scripts/backup.sh >> /var/log/agent-gateway-backup.log 2>&1

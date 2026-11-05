@@ -67,7 +67,7 @@ api() {
   local -a extra=()
   if [[ -n "$data" ]]; then extra=(--data-binary "$data"); fi
   local out rc=0
-  # -g: curl не разбирает [] и {} в URL как диапазоны (фильтры вида filter[ID]=1)
+  # -g: curl does not parse [] and {} in the URL as ranges (filters like filter[ID]=1)
   out=$(curl -sS -g --max-time 60 -X "$method" "$BASE$path" \
         -K <(printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' "$auth") \
         ${extra[@]+"${extra[@]}"} -w '\n%{http_code}') || rc=$?
@@ -152,7 +152,7 @@ cmd_call() {
     GET|POST|PUT|PATCH|DELETE) ;;
     *) die "unsupported method: $method" ;;
   esac
-  # Проверки касаются только пути (до "?"): в запросе допустимы @ (email), .. и ://
+  # The checks apply to the path only (before "?"): the query may contain @ (email), .. and ://
   case "${path%%\?*}" in
     *..*|*@*|*://*) die "invalid path" ;;
   esac

@@ -111,7 +111,7 @@ Errors from the proxy:
 
 ### MCP
 
-A Streamable HTTP endpoint at `/mcp`. Authenticate every request with `Authorization: Bearer gwa_...` (the agent token). Passes stay on the server, the model never sees them. Browser-based MCP clients need their origin in `GW_MCP_ORIGINS` (comma separated). Clients without an `Origin` header (CLI, desktop) work as is. `GW_MCP_ENABLED=0` turns the endpoint off. The tool contract is in [docs/contracts/access-mcp.md](docs/contracts/access-mcp.md).
+A Streamable HTTP endpoint at `/mcp`. Authenticate every request with `Authorization: Bearer gwa_...` (the agent token). Passes stay on the server, the model never sees them. Browser-based MCP clients need their origin in `GW_MCP_ORIGINS` (comma separated). Clients without an `Origin` header (CLI, desktop) work as is. `GW_MCP_ENABLED=0` turns the endpoint off. The tool reference is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#mcp-tool-reference).
 
 ## Data filter
 
@@ -192,7 +192,9 @@ The full threat model, controls, and how to report a vulnerability: [SECURITY.md
 
 ## Status
 
-Version 1.0: single owner, self-hosted. English is the default interface language. Set `GW_LANG=ru` for Russian. Setup script messages are in Russian. `docs/DEPLOY.md` is in English, a Russian copy is in `docs/ru/DEPLOY.md`.
+Version 1.0: single owner, self-hosted. English is the default interface language. Set `GW_LANG=ru` for Russian. Setup script messages are in English. `docs/DEPLOY.md` is in English, a Russian copy is in `docs/ru/DEPLOY.md`. Code comments are mostly in Russian.
+
+Not yet tested end to end on a live server in this version: Telegram approvals, SMTP notifications, the `ssm` vault on AWS, Docker with a real Caddy certificate, Atlassian and Airtable. Reports are welcome.
 
 ## Roadmap
 

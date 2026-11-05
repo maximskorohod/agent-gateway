@@ -187,9 +187,9 @@ test('backup.sh: синтаксис bash -n', { skip: !bashOk && 'bash недо�
 
 test('backup.sh: ветки с открытой копией нет, шифрование обязательно, сейф включён в архив', () => {
   const s = fs.readFileSync(script, 'utf8');
-  assert.ok(!s.includes('НЕ зашифрована'));
+  assert.ok(!/not encrypted/i.test(s));
   assert.ok(!/FINAL="\$PLAIN"/.test(s));
-  assert.match(s, /шифровать нечем[^\n]*\n[^\n]*\n\s*exit 1/);
+  assert.match(s, /nothing to encrypt with[^\n]*\n[^\n]*\n\s*exit 1/);
   assert.match(s, /trap rm_plain EXIT/);
   assert.ok(s.includes('vault.json') && s.includes('master.key'));
   assert.ok(!s.includes('trap - EXIT'));

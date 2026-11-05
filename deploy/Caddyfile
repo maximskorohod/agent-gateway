@@ -1,20 +1,20 @@
-# Caddy: TLS (Let's Encrypt) и обратный прокси к шлюзу на 127.0.0.1:8080.
-# Устанавливается setup.sh в /etc/caddy/Caddyfile: setup.sh подставляет домен вместо плейсхолдера
-# из первой строки блока сайта (sed-замена по строке "{$DOMAIN}").
+# Caddy: TLS (Let's Encrypt) and a reverse proxy to the gateway at 127.0.0.1:8080.
+# Installed by setup.sh to /etc/caddy/Caddyfile: setup.sh substitutes the domain for the placeholder
+# in the first line of the site block (sed replacement on the "{$DOMAIN}" line).
 #
-# Строки с пометкой "#cf " включаются только при setup.sh --behind-cloudflare (домен с оранжевой
-# тучкой): Caddy доверяет заголовку CF-Connecting-IP только от адресов Cloudflare
-# (www.cloudflare.com/ips, сверено 2026-11-02), иначе блокировка входа видела бы один IP Cloudflare на всех.
+# Lines marked "#cf " are enabled only with setup.sh --behind-cloudflare (a domain with the orange
+# cloud): Caddy trusts the CF-Connecting-IP header only from Cloudflare addresses
+# (www.cloudflare.com/ips, checked 2026-11-02), otherwise the login lockout would see one Cloudflare IP for everyone.
 {
 	servers {
-		# HTTP/3 выключен: nftables не открывает UDP 443, а объявленный Alt-Svc h3 заставлял браузеры ждать QUIC (ревью staging R-2)
+		# HTTP/3 is off: nftables does not open UDP 443, and the advertised Alt-Svc h3 made browsers wait for QUIC (staging review R-2)
 		protocols h1 h2
 #cf 		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
 #cf 		trusted_proxies_strict
 #cf 		client_ip_headers CF-Connecting-IP
 	}
-	# Служебный журнал Caddy (ошибки reverse_proxy и т. п., уходит в journald): те же фильтры, что у access-log,
-	# и без порта клиента. Без них в journald попадали query, заголовки и полный IP (ревью staging R-1).
+	# Caddy service log (reverse_proxy errors and so on, goes to journald): the same filters as the access log,
+	# and no client port. Without them journald received the query, headers and the full IP (staging review R-1).
 	log default {
 		output stderr
 		format filter {
@@ -31,9 +31,9 @@
 }
 
 {$DOMAIN} {
-	# Authenticated Origin Pulls (Н-11, только за Cloudflare): TLS-рукопожатие проходит лишь с клиентским
-	# сертификатом Cloudflare, прямые подключения к IP сервера (и подделка CF-Connecting-IP) отсекаются.
-	# CA кладёт оператор, setup.sh сверяет его отпечаток (см. docs/DEPLOY.md). Синтаксис trust_pool: Caddy 2.7+.
+	# Authenticated Origin Pulls (N-11, behind Cloudflare only): the TLS handshake succeeds only with the Cloudflare
+	# client certificate, so direct connections to the server IP (and a forged CF-Connecting-IP) are rejected.
+	# The operator places the CA, setup.sh checks its fingerprint (see docs/DEPLOY.md). trust_pool syntax: Caddy 2.7+.
 	#cf tls {
 	#cf 	client_auth {
 	#cf 		mode require_and_verify
@@ -41,8 +41,8 @@
 	#cf 	}
 	#cf }
 
-	# Тело запроса: Deepgram принимает файлы до 200 МБ, поэтому лимит на входе 210 МБ.
-	# Общий лимит тела 2 МБ для остальных запросов проверяет само приложение.
+	# Request body: Deepgram accepts files up to 200 MB, so the limit at the entrance is 210 MB.
+	# The general body limit of 2 MB for other requests is enforced by the application itself.
 	request_body {
 		max_size 210MB
 	}
@@ -55,10 +55,10 @@
 		-Server
 	}
 
-	# Лог доступа без query string и без заголовков запроса (в ТЗ §9 — Caddy без query/headers).
-	# IP маскируется до /16 (IPv4) и /32 (IPv6).
-	# Синтаксис фильтров Caddy 2 (format filter, regexp, ip_mask) проверен на Caddy 2.11.
-	# Одноразовые ссылки входа /l/<токен> и /setup/<код> несут секрет в пути: в лог они не попадают совсем.
+	# Access log without the query string and without request headers (spec section 9: Caddy without query/headers).
+	# The IP is masked to /16 (IPv4) and /32 (IPv6).
+	# The Caddy 2 filter syntax (format filter, regexp, ip_mask) was checked on Caddy 2.11.
+	# One-time login links /l/<token> and /setup/<code> carry a secret in the path: they are not logged at all.
 	@secret_paths path /l/* /setup/*
 	log_skip @secret_paths
 
@@ -79,12 +79,12 @@
 	}
 
 	reverse_proxy 127.0.0.1:8080 {
-		# Потоковые ответы (прокси к сервисам) отдаём без буферизации
+		# Streaming responses (proxy to services) are passed without buffering
 		flush_interval -1
-		# Шлюзу передаём один адрес клиента, а не цепочку: Fastify (trustProxy loopback)
-		# иначе взял бы из цепочки адрес Cloudflare.
+		# Pass the gateway a single client address, not a chain: otherwise Fastify (trustProxy loopback)
+		# would take the Cloudflare address from the chain.
 		header_up X-Forwarded-For {client_ip}
-		# Deepgram отвечает до 600 с; заголовки ответа ждём дольше, чем у провайдера.
+		# Deepgram answers within 600 s; wait for response headers longer than the provider does.
 		transport http {
 			response_header_timeout 620s
 		}

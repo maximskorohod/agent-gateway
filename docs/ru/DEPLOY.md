@@ -85,7 +85,7 @@ sudo bash /root/setup.sh --domain gw.example.com --vault ssm --region eu-central
 В конце скрипт печатает одноразовую ссылку мастера:
 
 ```
-==> Мастер настройки: gateway init
+==> Setup wizard: gateway init
 ...ссылка вида https://gw.example.com/setup/<код>...
 ```
 

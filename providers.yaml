@@ -1,21 +1,21 @@
-# Каталог сервисов (ТЗ §4). Правила подстановки задаёт шлюз, а не агент.
-# maxBody в байтах, timeout в секундах. fields — что спрашивает экран 3.
-# keyHint — подсказка на английском (ТЗ v1.2 §2).
+# Service catalog (spec section 4). The substitution rules are set by the gateway, not by the agent.
+# maxBody is in bytes, timeout in seconds. fields is what screen 3 asks for.
+# keyHint is a hint in English (spec v1.2 section 2).
 #
-# builder выбирает разбор ввода владельца (src/catalog.js): static (по умолчанию, только ключ),
-# webhook (ссылка вебхука), subdomain (адрес из hostTemplate), basic (HTTP Basic), other (только slug other).
-# У фиксированного host (не owner) адрес из ввода не берётся никогда.
-# Тип подстановки `encode: base64` (builder basic): значение заголовка — prefix + base64(секрет),
-# секрет в сейфе — `логин:ключ`; логин задаёт basicLogin ({account} по умолчанию, {email}/token у Zendesk).
+# builder selects how the owner's input is parsed (src/catalog.js): static (default, key only),
+# webhook (webhook URL), subdomain (address from hostTemplate), basic (HTTP Basic), other (slug other only).
+# For a fixed host (not owner) the address is never taken from the input.
+# Injection type `encode: base64` (builder basic): the header value is prefix + base64(secret),
+# the secret in the vault is `login:key`; the login is set by basicLogin ({account} by default, {email}/token for Zendesk).
 #
-# sensitive: true — платёжный сервис; перевод в «always» требует доп. подтверждения.
-# getKeyUrl — только https; getKeyHint — подсказка en (ru: ключ catalog.getkey.<slug>).
-# accountPlaceholder — пример в поле account (короткая строка, только при поле account; не настоящий идентификатор).
-# warning: true — на форме ключа показывается catalog.warn.<slug>.
-# filterFrom: <slug> — фильтр данных и readOnly копируются у другого провайдера при загрузке.
-# readOnly (слой 1): нет поля — у сервиса недоступен (запись неотличима от чтения); true — GET/HEAD;
-#   объект { style: rest|rpc, extraRoutes: ['POST /путь'] (POST-чтение), readMethods: [шаблоны] (rpc), default: true (у новых ключей включён) }.
-# mask: false — маскировка личных данных недоступна (LLM и потоковые сервисы).
+# sensitive: true is a payment service; switching to "always" requires extra confirmation.
+# getKeyUrl is https only; getKeyHint is the en hint (ru: key catalog.getkey.<slug>).
+# accountPlaceholder is an example in the account field (a short string, only with an account field; not a real identifier).
+# warning: true shows catalog.warn.<slug> on the key form.
+# filterFrom: <slug> copies the data filter and readOnly from another provider on load.
+# readOnly (layer 1): no field means unavailable for the service (a write cannot be told from a read); true means GET/HEAD;
+#   an object { style: rest|rpc, extraRoutes: ['POST /path'] (POST that reads), readMethods: [patterns] (rpc), default: true (enabled for new keys) }.
+# mask: false means masking of personal data is unavailable (LLM and streaming services).
 defaults:
   maxBody: 2097152
   timeout: 60
@@ -96,12 +96,12 @@ providers:
     keyHint: 'expected key like secret_… or ntn_…'
     extraHeaders: { 'notion-version': '2022-06-28' }
     getKeyUrl: 'https://www.notion.so/profile/integrations'
-    # POST, который только читает: поиск и запрос к базе данных
+    # POST that only reads: search and a database query
     readOnly: { extraRoutes: ['POST /v1/search', 'POST /v1/databases/:id/query'] }
   linear:
     name: Linear
     host: api.linear.app
-    # Linear принимает голый ключ в authorization, без «Bearer ».
+    # Linear takes the bare key in authorization, without "Bearer ".
     injection: { type: header, name: authorization }
     keyPattern: '^lin_api_[A-Za-z0-9]+$'
     keyHint: 'expected key like lin_api_…'
@@ -122,13 +122,13 @@ providers:
     injection: { type: header, name: authorization, prefix: 'Bearer ' }
     keyPattern: '^pat-[a-z0-9]+-[a-f0-9-]+$'
     keyHint: 'expected a service key like pat-eu1-…'
-    # private apps закрыты 26.10.2026; service key (тот же формат pat-…) проверен на тестовом аккаунте 04.11.2026
+    # private apps were closed on 2026-10-26; the service key (same pat-... format) was checked on a test account on 2026-11-04
     getKeyUrl: 'https://app.hubspot.com/l/service-keys'
     getKeyHint: 'Create a service key with read scopes only: crm.objects.deals.read (plus contacts and companies if you need them)'
-    # CRM: чтение включено у новых ключей сразу; POST поиска только читает
+    # CRM: reading is enabled for new keys right away; the search POST only reads
     readOnly: { default: true, extraRoutes: ['POST /crm/v3/objects/*/search'] }
-    # Фильтр данных, REST-стиль (п. 7.3, ТЗ §9.3). Поля сделок проверены на живом тестовом аккаунте 04.11.2026:
-    # все пути есть в ответе, фильтр по умолчанию пропускает только разрешённое.
+    # Data filter, REST style (item 7.3, spec section 9.3). Deal fields were checked on a live test account on 2026-11-04:
+    # all paths are present in the response, and by default the filter lets through only what is allowed.
     filter:
       style: rest
       unverified: false
@@ -176,10 +176,10 @@ providers:
     getKeyUrl: 'https://app.pipedrive.com/settings/api'
     getKeyHint: 'Copy your personal API token'
     readOnly: { default: true }
-    # Фильтр данных, REST-стиль (п. 7.3). Проверено на живом тестовом аккаунте 04.11.2026 (v1 и v2: owner_id есть только в v2,
-    # user_id — только в v1). В v1 person_id/org_id/user_id приходят объектами с именем,
-    # e-mail и телефоном, а person_name/org_name/owner_name строками; без object:true объекты вырезаются целиком,
-    # непоименованные поля (в том числе кастомные) тоже. Единственное «внутреннее» поле: id владельца.
+    # Data filter, REST style (item 7.3). Checked on a live test account on 2026-11-04 (v1 and v2: owner_id exists only in v2,
+    # user_id only in v1). In v1, person_id/org_id/user_id arrive as objects with a name,
+    # e-mail and phone, while person_name/org_name/owner_name are strings; without object:true the objects are cut out entirely,
+    # and so are unnamed fields (including custom ones). The only "internal" field: the owner id.
     filter:
       style: rest
       unverified: false
@@ -204,7 +204,7 @@ providers:
         - ANY /api/v2/itemSearch/**
         - ANY /api/v2/deals/search
         - ANY /api/v2/deals/*/followers/**
-      # фильтр по персоне, организации или сохранённому фильтру выдаёт наличие совпадений (П-18)
+      # a filter by person, organization or saved filter reveals whether there are matches (P-18)
       denyQuery: [person_id, org_id, filter_id]
       entities:
         deals:
@@ -231,8 +231,8 @@ providers:
           defaults: ['data[].id', 'data[].status', 'data[].stage_id', 'data[].add_time']
   zendesk:
     name: Zendesk
-    # Поддомен аккаунта из ввода, хост строится только по шаблону. HTTP Basic: `email/token:ключ`.
-    # Zendesk с 27.10.2026 не выдаёт новые API-токены, существующие работают до 30.04.2027; OAuth (client_credentials) — после запуска.
+    # The account subdomain comes from the input, the host is built from the template only. HTTP Basic: `email/token:key`.
+    # Zendesk stopped issuing new API tokens on 2026-10-27, existing ones work until 2027-04-30; OAuth (client_credentials) comes after launch.
     host: owner
     builder: basic
     hostTemplate: '{account}.zendesk.com'
@@ -245,9 +245,9 @@ providers:
     getKeyUrl: 'https://developer.zendesk.com/api-reference/introduction/security-and-auth/'
     getKeyHint: 'Zendesk stops issuing new API tokens on 27 Oct 2026; existing tokens work until 30 Apr 2027. OAuth support comes later'
     readOnly: { default: true }
-    # Фильтр данных, REST-стиль (п. 7.3). unverified: см. hubspot. requester_id остаётся (скаляр, без имени и e-mail);
-    # via (канал с адресом отправителя), custom_fields, tags и вложенные объекты вырезаются. subject и description
-    # могут содержать данные клиента: поля есть в списке, но по умолчанию не отмечены. include=users и подобные закрыты denyQuery.
+    # Data filter, REST style (item 7.3). unverified: see hubspot. requester_id stays (a scalar, no name or e-mail);
+    # via (the channel with the sender address), custom_fields, tags and nested objects are cut out. subject and description
+    # may contain customer data: the fields are in the list but unchecked by default. include=users and similar are closed by denyQuery.
     filter:
       style: rest
       unverified: true
@@ -302,8 +302,8 @@ providers:
           defaults: ['tickets[].id', 'ticket.id', 'tickets[].status', 'ticket.status', 'tickets[].requester_id', 'ticket.requester_id', 'tickets[].created_at', 'ticket.created_at']
   atlassian:
     name: Atlassian
-    # Jira Cloud (/rest/api/3/...) и Confluence Cloud (/wiki/api/v2/...) на одном хосте <сайт>.atlassian.net.
-    # Хост строится только по шаблону из ввода. HTTP Basic: `email:api_token`. Фильтра данных нет.
+    # Jira Cloud (/rest/api/3/...) and Confluence Cloud (/wiki/api/v2/...) on one host <site>.atlassian.net.
+    # The host is built from the input by the template only. HTTP Basic: `email:api_token`. No data filter.
     host: owner
     builder: basic
     hostTemplate: '{account}.atlassian.net'
@@ -315,18 +315,18 @@ providers:
     keyHint: 'site name like mycompany (or mycompany.atlassian.net), the e-mail of the token owner and an API token'
     getKeyUrl: 'https://id.atlassian.com/manage-profile/security/api-tokens'
     getKeyHint: 'The token has all permissions of its owner: create it for a dedicated account that can only read what the agent needs'
-    # POST поиска JQL и подсчёта только читают
+    # The JQL search and count POSTs only read
     readOnly: { default: true, extraRoutes: ['POST /rest/api/3/search/jql', 'POST /rest/api/3/search/approximate-count'] }
   airtable:
     name: Airtable
     host: api.airtable.com
     injection: { type: header, name: authorization, prefix: 'Bearer ' }
-    # personal access token: pat + 14 символов, точка, 64 hex (проверено по документации; формат не привязан к длине)
+    # personal access token: pat + 14 characters, a dot, 64 hex (checked against the documentation; the format is not tied to a length)
     keyPattern: '^pat[A-Za-z0-9]+\.[A-Za-z0-9]+$'
     keyHint: 'expected a personal access token like pat…'
     getKeyUrl: 'https://airtable.com/create/tokens'
     getKeyHint: 'Create a personal access token with the data.records:read scope and only the bases you need'
-    # POST listRecords только читает (длинный фильтр вместо GET)
+    # POST listRecords only reads (a long filter instead of GET)
     readOnly: { default: true, extraRoutes: ['POST /v0/*/*/listRecords'] }
   resend:
     name: Resend
@@ -344,8 +344,8 @@ providers:
     getKeyUrl: 'https://app.sendgrid.com/settings/api_keys'
   twilio:
     name: Twilio
-    # Фиксированный хост: Account SID идёт в секрет (Basic) как логин. Секрет — Auth Token; сам SID — идентификатор
-    # аккаунта и виден в путях API (/Accounts/<SID>/…), поэтому попадает в журналы и аудит (SECURITY.md, ревью staging R-4).
+    # Fixed host: the Account SID goes into the secret (Basic) as the login. The secret is the Auth Token; the SID itself is an account
+    # identifier and is visible in API paths (/Accounts/<SID>/...), so it appears in logs and the audit (SECURITY.md, staging review R-4).
     host: api.twilio.com
     builder: basic
     accountPattern: '^AC[a-f0-9]{32}$'
@@ -356,7 +356,7 @@ providers:
     getKeyUrl: 'https://console.twilio.com/'
     getKeyHint: 'Account SID and Auth Token are on the console home page'
     sensitive: true
-    readOnly: { default: true } # отправка SMS и звонки — деньги и сообщения от имени владельца
+    readOnly: { default: true } # sending SMS and calls cost money and send messages on behalf of the owner
   deepgram:
     name: Deepgram
     host: api.deepgram.com
@@ -382,7 +382,7 @@ providers:
     keyHint: 'expected bot token like 123456:AAE…'
     getKeyUrl: 'https://t.me/BotFather'
     getKeyHint: 'Send /newbot to BotFather and copy the token'
-    # getUpdates исключён: он сдвигает очередь обновлений бота
+    # getUpdates is excluded: it advances the bot's update queue
     readOnly:
       style: rpc
       readMethods: [getMe, getChat, getChatMemberCount, getChatAdministrators]
@@ -390,20 +390,20 @@ providers:
     name: Bitrix24
     host: owner
     builder: webhook
-    # Только облачные порталы Bitrix24; коробочный портал — отдельный провайдер bitrix24-box.
+    # Cloud Bitrix24 portals only; a self-hosted portal is a separate provider, bitrix24-box.
     hostPattern: '^[a-z0-9-]+\.bitrix24\.(ru|com|by|kz|ua|de|eu)$'
     kind: path
     injection: { type: path, template: '/rest/{secret}' }
     fields: [webhook_url]
     keyHint: 'paste the full incoming webhook URL, e.g. https://mycompany.bitrix24.ru/rest/17/k3j9fh2x8s7d/'
     getKeyUrl: 'https://apidocs.bitrix24.com/local-integrations/local-webhooks.html'
-    # Только чтение (п. 7.2): у новых ключей включено сразу; bitrix24-box берёт то же через filterFrom
+    # Read only (item 7.2): enabled for new keys right away; bitrix24-box takes the same through filterFrom
     readOnly:
       style: rpc
       default: true
       readMethods: ['crm.*.list', 'crm.*.get', 'crm.*.fields', user.get, user.fields]
-    # Фильтр данных (ТЗ v1.3). deny закрыт при любом фильтре: через эти методы видны контакты,
-    # звонки и файлы, а batch обходит проверку методов.
+    # Data filter (spec v1.3). deny is closed under any filter: these methods expose contacts,
+    # calls and files, and batch bypasses the method check.
     filter:
       keep: [error, error_description, total, next, time.start, time.finish, time.duration, time.processing, time.date_start, time.date_finish]
       deny: [batch, 'crm.contact.*', 'crm.company.*', 'crm.requisite.*', 'crm.address.*', 'crm.activity.*', 'crm.item.*',
@@ -412,7 +412,7 @@ providers:
         'user.option.*', 'user.userfield.*', 'user.counters', 'department.*', 'calendar.*', 'mailservice.*']
       selectParam: select
       selectFor: [crm.deal.list, crm.lead.list]
-      # Типы данных с галочками на странице ключа. defaults — что отмечено, пока владелец не поменял.
+      # Data types with checkboxes on the key page. defaults is what is checked until the owner changes it.
       entities:
         deals:
           name: 'Deals'
@@ -454,10 +454,10 @@ providers:
             - { path: result.SOURCE_ID, label: 'Source' }
             - { path: result.NAME, label: 'Client first name' }
             - { path: result.LAST_NAME, label: 'Client last name' }
-            - { path: result.PHONE, label: 'Client phone', object: true }   # мультиполе: массив {VALUE, VALUE_TYPE}
+            - { path: result.PHONE, label: 'Client phone', object: true }   # multi-field: an array of {VALUE, VALUE_TYPE}
             - { path: result.EMAIL, label: 'Client e-mail', object: true }
           defaults: [result.ID, result.STATUS_ID, result.ASSIGNED_BY_ID, result.COMMENTS, result.DATE_CREATE, result.MOVED_TIME]
-        # В сделках и лидах менеджер — только ID; имя агент берёт через user.get, остальные поля сотрудника вырезаются.
+        # In deals and leads the manager is an ID only; the agent gets the name through user.get, and the other employee fields are cut out.
         users:
           name: 'Manager names'
           methods: [user.get]
@@ -469,8 +469,8 @@ providers:
           defaults: [result.ID, result.NAME, result.LAST_NAME]
   bitrix24-box:
     name: Bitrix24 (self-hosted)
-    # Адрес портала произвольный: только https:443 и доменное имя (не IP, не localhost);
-    # каждое подключение проходит проверку приватных адресов в core/proxy.js (safeLookup).
+    # The portal address is arbitrary: https:443 and a domain name only (not an IP, not localhost);
+    # every connection goes through the private address check in core/proxy.js (safeLookup).
     host: owner
     builder: webhook
     warning: true
@@ -491,8 +491,8 @@ providers:
     keyHint: 'account address like mycompany.amocrm.ru and a long-lived integration token'
     getKeyUrl: 'https://www.amocrm.ru/developers/content/oauth/step-by-step'
     readOnly: { default: true }
-  # Только для демо-режима (GW_DEMO=1): вне демо скрыт. Хост demo.invalid (зарезервированный TLD) не резолвится,
-  # запросы к нему обслуживает встроенный мок в процессе (src/demo/), сокеты не открываются.
+  # Demo mode only (GW_DEMO=1): hidden outside the demo. The host demo.invalid (a reserved TLD) does not resolve,
+  # requests to it are served by the built-in in-process mock (src/demo/), and no sockets are opened.
   demo:
     name: Demo CRM
     demoOnly: true
@@ -529,7 +529,7 @@ providers:
             - { path: result.COMMENTS, label: 'Comment' }
           defaults: [result.ID, result.NAME]
   other:
-    name: Другой
+    name: Other
     host: owner
     builder: other
     injection: { type: header, name: owner }

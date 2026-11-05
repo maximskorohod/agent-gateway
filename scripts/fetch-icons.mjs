@@ -1,8 +1,8 @@
-// Загрузка иконок провайдеров в assets/icons/<slug>.svg (ТЗ §4).
-// Порядок: Simple Icons с jsDelivr (версия зафиксирована, цвет бренда из data/simple-icons.json)
-// → cdn.simpleicons.org → favicon.svg сайта сервиса → SVG-заглушка.
-// cdn.simpleicons.org с адресов AWS отвечает 403 (проверка Cloudflare), поэтому он не первый.
-// Запуск: node scripts/fetch-icons.mjs
+// Downloads provider icons to assets/icons/<slug>.svg (spec section 4).
+// Order: Simple Icons from jsDelivr (pinned version, brand color from data/simple-icons.json)
+// -> cdn.simpleicons.org -> the service's favicon.svg -> SVG placeholder.
+// cdn.simpleicons.org answers 403 to AWS addresses (Cloudflare check), so it is not first.
+// Run: node scripts/fetch-icons.mjs
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,15 +10,15 @@ import { loadCatalog } from '../src/catalog.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const iconsDir = path.join(root, 'assets', 'icons');
-const MAX_BYTES = 50 * 1024;        // итоговый размер после очистки
-const MAX_RAW_BYTES = 1024 * 1024;  // защита памяти при скачивании
+const MAX_BYTES = 50 * 1024;        // final size after sanitizing
+const MAX_RAW_BYTES = 1024 * 1024;  // memory guard while downloading
 const TIMEOUT_MS = 10_000;
 
-// Дополнительные имена в Simple Icons, которые не совпадают со slug и name.
+// Extra Simple Icons names that match neither the slug nor the name.
 const SIMPLE_ICON_ALIASES = {
   mistral: ['mistralai'],
   gemini: ['googlegemini'],
-  // Имена в Simple Icons совпадают со slug; перечислены явно, чтобы не полагаться на нормализацию имени.
+  // Simple Icons names match the slug; listed explicitly so as not to rely on name normalization.
   openai: ['openai'],
   anthropic: ['anthropic'],
   slack: ['slack'],
@@ -30,18 +30,18 @@ const SIMPLE_ICON_ALIASES = {
   sendgrid: ['sendgrid'],
   twilio: ['twilio'],
 };
-// Сайт с favicon.svg, если у сервиса нет иконки в Simple Icons, а API-хост своей не отдаёт.
+// Site with a favicon.svg, if the service has no icon in Simple Icons and its API host serves none.
 const FAVICON_HOSTS = { groq: 'groq.com', bitrix24: 'www.bitrix24.ru' };
 const SIMPLE_ICONS = 'https://cdn.jsdelivr.net/npm/simple-icons@16.36.0';
 
-let brandHex = null; // slug Simple Icons → цвет бренда
+let brandHex = null; // Simple Icons slug -> brand color
 async function loadBrandHex() {
   if (brandHex) return brandHex;
   brandHex = new Map();
   try {
     const data = JSON.parse((await fetchText(`${SIMPLE_ICONS}/data/simple-icons.json`)) ?? '[]');
     for (const i of data) if (i.slug && /^[0-9A-Fa-f]{6}$/.test(i.hex)) brandHex.set(i.slug, i.hex);
-  } catch { /* без цвета — иконка будет чёрной */ }
+  } catch { /* no color: the icon will be black */ }
   return brandHex;
 }
 
@@ -62,15 +62,15 @@ async function fetchText(url) {
 }
 
 /**
- * Очистка SVG: скрипты, on*-атрибуты, внешние href, foreignObject.
- * @returns {string|null} очищенный SVG или null, если это не SVG или он не проходит проверки
+ * SVG sanitizing: scripts, on* attributes, external href, foreignObject.
+ * @returns {string|null} sanitized SVG, or null if it is not an SVG or fails the checks
  */
 export function sanitizeSvg(raw) {
-  // Убираем XML-декларацию и комментарии в начале.
+  // Strip the XML declaration and leading comments.
   let s = raw.replace(/^﻿/, '').trim();
   s = s.replace(/^(?:<\?xml[^>]*\?>\s*|<!--[\s\S]*?-->\s*)+/i, '');
   if (!s.startsWith('<svg')) return null;
-  // DOCTYPE и ENTITY не нужны иконке и открывают XXE.
+  // An icon needs no DOCTYPE or ENTITY, and they open the door to XXE.
   if (/<!DOCTYPE|<!ENTITY/i.test(s)) return null;
 
   s = s.replace(/<script\b[\s\S]*?<\/script\s*>/gi, '');
@@ -89,7 +89,7 @@ export function sanitizeSvg(raw) {
 
 const escapeXml = (t) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-/** SVG-заглушка: серый круг с буквой или знаком «+». */
+/** SVG placeholder: a grey circle with a letter or a "+" sign. */
 function stubSvg(name, { plus = false } = {}) {
   const body = plus
     ? '<path d="M32 18v28M18 32h28" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>'
@@ -97,7 +97,7 @@ function stubSvg(name, { plus = false } = {}) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#6b7280"/>${body}</svg>\n`;
 }
 
-/** Ищет иконку провайдера: сначала Simple Icons, затем favicon хоста. */
+/** Looks for the provider icon: Simple Icons first, then the host favicon. */
 async function findIcon(p) {
   const normName = p.name.toLowerCase().replace(/[^a-z0-9]/g, '');
   const candidates = [...new Set([p.slug, normName, ...(SIMPLE_ICON_ALIASES[p.slug] || [])])];
@@ -111,7 +111,7 @@ async function findIcon(p) {
     svg = sanitizeSvg((await fetchText(`https://cdn.simpleicons.org/${c}`)) ?? '');
     if (svg) return { svg, source: `Simple Icons (${c})` };
   }
-  // favicon.ico намеренно не берём: это не SVG.
+  // favicon.ico is skipped on purpose: it is not an SVG.
   const hosts = [...new Set([FAVICON_HOSTS[p.slug], p.host !== 'owner' ? p.host : null].filter(Boolean))];
   for (const h of hosts) {
     const svg = sanitizeSvg((await fetchText(`https://${h}/favicon.svg`)) ?? '');
@@ -121,8 +121,8 @@ async function findIcon(p) {
 }
 
 /**
- * Что делать с иконкой провайдера (без сети, тестируется отдельно).
- * Найдена в источнике — пишем; не найдена и файл уже есть — оставляем как есть; нет ни того, ни другого — заглушка.
+ * What to do with the provider icon (no network, tested separately).
+ * Found in a source: write it; not found and the file already exists: keep it as is; neither: placeholder.
  * @returns {'write'|'keep'|'stub'}
  */
 export function decideIconAction({ found, exists }) {
@@ -130,7 +130,7 @@ export function decideIconAction({ found, exists }) {
   return exists ? 'keep' : 'stub';
 }
 
-/** Атомарная запись: временный файл рядом, затем rename; при ошибке временный файл удаляется. */
+/** Atomic write: a temporary file next to the target, then rename; on error the temporary file is removed. */
 export async function writeFileAtomic(file, data) {
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
   try {
@@ -142,7 +142,7 @@ export async function writeFileAtomic(file, data) {
   }
 }
 
-/** Применяет решение к файлу иконки. @returns {Promise<'write'|'keep'|'stub'>} */
+/** Applies the decision to the icon file. @returns {Promise<'write'|'keep'|'stub'>} */
 export async function saveIcon(dir, slug, { svg, stub }) {
   const file = path.join(dir, `${slug}.svg`);
   const exists = await fs.access(file).then(() => true, () => false);
@@ -153,7 +153,7 @@ export async function saveIcon(dir, slug, { svg, stub }) {
   return action;
 }
 
-// Необязательные аргументы — slug'и: `node scripts/fetch-icons.mjs pipedrive zendesk` обновляет только их
+// Optional arguments are slugs: `node scripts/fetch-icons.mjs pipedrive zendesk` updates only those
 async function main(only = []) {
   const catalog = loadCatalog(path.join(root, 'providers.yaml'));
   await fs.mkdir(iconsDir, { recursive: true });
@@ -164,16 +164,16 @@ async function main(only = []) {
     let stub = stubSvg(p.name);
     if (p.slug === 'other') {
       svg = stubSvg(p.name, { plus: true });
-      source = 'заглушка (+)';
+      source = 'placeholder (+)';
     } else {
       ({ svg, source } = await findIcon(p));
     }
     const action = await saveIcon(iconsDir, p.slug, { svg, stub });
-    console.log(`${p.slug}\t${action === 'write' ? source : action === 'keep' ? 'источники недоступны, файл оставлен как есть' : 'заглушка (буква)'}`);
+    console.log(`${p.slug}\t${action === 'write' ? source : action === 'keep' ? 'sources unavailable, file kept as is' : 'placeholder (letter)'}`);
   }
 }
 
-// Запуск только как скрипт, не при импорте в тестах.
+// Runs only as a script, not when imported in tests.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   await main(process.argv.slice(2));
 }

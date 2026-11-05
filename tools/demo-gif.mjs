@@ -1,8 +1,8 @@
-// Анимация для README: агент просит доступ -> владелец одобряет на сайте -> вызов проходит.
-// Поднимает демо-экземпляр (GW_DEMO=1: сервис Demo CRM, мок в процессе, без сети) на чистом каталоге в out/,
-// снимает кадры headless Chrome по CDP (1280x800, светлая тема, en) и собирает GIF чистым JS, без ffmpeg и зависимостей.
-// Запуск: node tools/demo-gif.mjs     Результат: assets/demo.gif (кадры в out/demo-gif/frames)
-// Chrome: переменная CHROME. Токены агента на кадры не попадают; адресная строка не снимается (headless).
+// README animation: the agent asks for access -> the owner approves on the site -> the call goes through.
+// Starts a demo instance (GW_DEMO=1: Demo CRM service, in-process mock, no network) on a clean directory in out/,
+// captures frames with headless Chrome over CDP (1280x800, light theme, en) and builds the GIF in plain JS, no ffmpeg or dependencies.
+// Run: node tools/demo-gif.mjs     Result: assets/demo.gif (frames in out/demo-gif/frames)
+// Chrome: the CHROME variable. Agent tokens do not appear in frames; the address bar is not captured (headless).
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
@@ -17,11 +17,11 @@ const PORT = 4630;
 const CDP = 9360;
 const W = 1280;
 const H = 800;
-const DELAY_CS = 250; // 2,5 с на кадр
+const DELAY_CS = 250; // 2.5 s per frame
 const LAST_DELAY_CS = 350;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ---- HTTP-клиент сайта с cookie и CSRF
+// ---- site HTTP client with cookies and CSRF
 function client(base) {
   const jar = new Map();
   async function web(method, p, form) {
@@ -67,7 +67,7 @@ async function startChrome() {
     const { data } = await page('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: W, height: H, scale: 1 } });
     fs.writeFileSync(file, Buffer.from(data, 'base64'));
   };
-  // Плашка с подписью шага поверх страницы (только стили через CSSOM: CSP сайта инлайн-атрибуты не пропускает)
+  // Caption bar with the step text over the page (styles via CSSOM only: the site CSP blocks inline attributes)
   const caption = (n, text) => evaluate(`(() => {
     document.getElementById('demo-cap')?.remove();
     const d = document.createElement('div'); d.id = 'demo-cap';
@@ -85,7 +85,7 @@ async function startChrome() {
       if (cap) await caption(...cap);
       await snap(file);
     },
-    // Заполненная страница-«терминал» агента: HTML кладётся в документ через CDP (внешних загрузок нет)
+    // A filled agent "terminal" page: the HTML is put into the document over CDP (no external loads)
     async terminal(html, file, cap) {
       const done = loaded(); await page('Page.navigate', { url: 'about:blank' }); await done;
       const { frameTree } = await page('Page.getFrameTree');
@@ -94,23 +94,23 @@ async function startChrome() {
       if (cap) await caption(...cap);
       await snap(file);
     },
-    // Действие в странице (отправка формы) с ожиданием загрузки и снимком
+    // An action in the page (form submit), waiting for the load, then a snapshot
     async act(expression, file, cap) {
       const done = loaded(); await evaluate(expression); await done; await sleep(300);
       if (cap) await caption(...cap);
       await snap(file);
     },
     close() {
-      try { ws.close(); } catch { /* уже закрыт */ }
+      try { ws.close(); } catch { /* already closed */ }
       proc.kill();
-      setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* занят */ } }, 3000);
+      setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* busy */ } }, 3000);
     },
   };
 }
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// Страница-терминал: команда агента и ответ шлюза. lines: [{ t: 'cmd' | 'out' | 'note', s }]
+// Terminal page: the agent command and the gateway response. lines: [{ t: 'cmd' | 'out' | 'note', s }]
 function terminalHtml(title, lines) {
   const body = lines.map((l) => `<div class="${l.t}">${esc(l.s)}</div>`).join('');
   return `<!doctype html><meta charset="utf-8"><style>
@@ -122,7 +122,7 @@ h1{margin:0 0 22px;font-size:26px;color:#14213d}
 </style><div class="wrap"><h1>${esc(title)}</h1><div class="term">${body}</div></div>`;
 }
 
-// ---- PNG -> RGBA (8 бит, без чересстрочности: так отдаёт Chrome)
+// ---- PNG -> RGBA (8 bit, not interlaced: that is what Chrome produces)
 function decodePng(buf) {
   let p = 8; let w; let h; let ct; const idat = [];
   while (p < buf.length) {
@@ -147,7 +147,7 @@ function decodePng(buf) {
   return { w, h, bpp, px };
 }
 
-// ---- палитра: медианный разрез по гистограмме 5 бит на канал
+// ---- palette: median cut over a 5-bit-per-channel histogram
 function buildPalette(images, size = 256) {
   const hist = new Map();
   for (const im of images) for (let i = 0; i < im.px.length; i += im.bpp) {
@@ -157,7 +157,7 @@ function buildPalette(images, size = 256) {
   let boxes = [[...hist].map(([k, n]) => ({ r: (k >> 10) & 31, g: (k >> 5) & 31, b: k & 31, n }))];
   const range = (box, ch) => { let lo = 31; let hi = 0; for (const c of box) { lo = Math.min(lo, c[ch]); hi = Math.max(hi, c[ch]); } return hi - lo; };
   while (boxes.length < size) {
-    // делим самый «населённый» ящик по самому широкому каналу
+    // split the most populated box along its widest channel
     let bi = -1; let best = 0;
     boxes.forEach((b, i) => { const wgt = b.reduce((s, c) => s + c.n, 0); if (b.length > 1 && wgt > best) { best = wgt; bi = i; } });
     if (bi < 0) break;
@@ -172,7 +172,7 @@ function buildPalette(images, size = 256) {
     const avg = (ch) => Math.min(255, Math.round((b.reduce((s, c) => s + c[ch] * c.n, 0) / n) * 8 + 4));
     return [avg('r'), avg('g'), avg('b')];
   });
-  // чистый белый и близкие к нему оттенки фона не должны уплывать
+  // pure white and background shades close to it must not drift
   pal[0] = pal[0] || [255, 255, 255];
   while (pal.length < size) pal.push([0, 0, 0]);
   return pal;
@@ -193,7 +193,7 @@ function indexImage(im, pal) {
   return out;
 }
 
-// ---- GIF89a: LZW, глобальная палитра, цикл
+// ---- GIF89a: LZW, global palette, loop
 function lzw(indices, minCode) {
   const clear = 1 << minCode; const eoi = clear + 1; const bytes = []; let cur = 0; let nbits = 0;
   const put = (code, size) => { cur |= code << nbits; nbits += size; while (nbits >= 8) { bytes.push(cur & 255); cur >>>= 8; nbits -= 8; } };
@@ -215,9 +215,9 @@ function lzw(indices, minCode) {
 
 function encodeGif(w, h, pal, frames) {
   const parts = [];
-  const hdr = Buffer.alloc(13); hdr.write('GIF89a', 0, 'latin1'); hdr.writeUInt16LE(w, 6); hdr.writeUInt16LE(h, 8); hdr[10] = 0xf7; // глобальная палитра 256
+  const hdr = Buffer.alloc(13); hdr.write('GIF89a', 0, 'latin1'); hdr.writeUInt16LE(w, 6); hdr.writeUInt16LE(h, 8); hdr[10] = 0xf7; // global palette, 256 colors
   parts.push(hdr, Buffer.from(pal.flat()));
-  parts.push(Buffer.from([0x21, 0xff, 0x0b, ...Buffer.from('NETSCAPE2.0', 'latin1'), 0x03, 0x01, 0, 0, 0])); // бесконечный цикл
+  parts.push(Buffer.from([0x21, 0xff, 0x0b, ...Buffer.from('NETSCAPE2.0', 'latin1'), 0x03, 0x01, 0, 0, 0])); // infinite loop
   for (const f of frames) {
     parts.push(Buffer.from([0x21, 0xf9, 0x04, 0x04, f.delay & 255, f.delay >> 8, 0, 0]));
     const d = Buffer.alloc(10); d[0] = 0x2c; d.writeUInt16LE(w, 5); d.writeUInt16LE(h, 7); parts.push(d, Buffer.from([8]));
@@ -229,10 +229,10 @@ function encodeGif(w, h, pal, frames) {
   return Buffer.concat(parts);
 }
 
-// ---- сценарий
+// ---- scenario
 async function main() {
   fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(FRAMES, { recursive: true });
-  const dataDir = path.join(OUT, 'data'); // не создаём: демо требует пустой или отсутствующий каталог
+  const dataDir = path.join(OUT, 'data'); // not created: the demo requires an empty or missing directory
   const base = `http://127.0.0.1:${PORT}`;
   const env = { ...process.env, GW_DEMO: '1', GW_DATA_DIR: dataDir, GW_PORT: String(PORT), GW_PUBLIC_URL: base, GW_VAULT: 'file', GW_LANG: 'en', GW_LOG_LEVEL: 'warn', GW_TZ: 'UTC' };
   for (const k of Object.keys(env)) if (/^(AWS_|GW_SSM_|GW_VAULT_PREFIX|GW_PROD_HOSTS)/.test(k)) delete env[k];
@@ -245,18 +245,18 @@ async function main() {
     if (!up) throw new Error('server did not start (see out/demo-gif/server.log)');
     chrome = await startChrome();
     const { jar, web } = client(base);
-    await web('GET', '/login'); // автовход демо-владельца
+    await web('GET', '/login'); // automatic sign-in of the demo owner
     const csrfOf = (h) => h.match(/name="_csrf" value="([^"]+)"/)?.[1];
     const post = async (p, form, from) => web('POST', p, { _csrf: csrfOf((await web('GET', from)).text), ...form });
     const f = (n) => path.join(FRAMES, `${n}.png`);
 
-    // агент (токен нужен только скрипту и на кадры не попадает)
+    // the agent (the token is needed by the script only and does not appear in frames)
     const created = await post('/agents', { name: 'research-bot' }, '/agents');
     const token = created.text.match(/gwa_[A-Za-z0-9_-]+/)?.[0];
     if (!token) throw new Error('agent token not found');
     const api = (m, p, body) => fetch(base + p, { method: m, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
 
-    // 1. агент просит доступ
+    // 1. the agent asks for access
     const reason = 'Export last week deals for the report';
     const g = await api('POST', '/v1/grants', { provider: 'demo', ttl: 900, calls: 20, reason });
     const gj = await g.json();
@@ -268,13 +268,13 @@ async function main() {
       { t: 'note', s: 'The agent waits for the owner. It has no key and no pass yet.' },
     ]), f('1-agent-asks'), [1, 'The agent asks for access: 15 minutes, 20 calls, with a reason']);
 
-    // 2. владелец видит заявку на сайте
+    // 2. the owner sees the request on the site
     await chrome.open(base + '/', [...jar], f('2-owner-sees'), [2, 'You see the request on the site: who, what, how long, why']);
 
-    // 3. одобрение кнопкой
+    // 3. approval with a button
     await chrome.act(`(() => { const f = [...document.forms].find((x) => /\\/requests\\/[^/]+\\/approve$/.test(x.getAttribute('action') || '')); if (!f) throw new Error('no approve form'); f.requestSubmit ? f.requestSubmit() : f.submit(); })()`, f('3-approved'), [3, 'You approve it with one click. The pass is limited by time and calls']);
 
-    // 4. агент получает пропуск и вызывает сервис
+    // 4. the agent gets the pass and calls the service
     const pj = await (await api('GET', `/v1/grants/${gj.request_id}`)).json();
     if (!pj.token) throw new Error('no pass: ' + JSON.stringify(pj));
     const call = await fetch(base + '/v1/proxy/demo/deals', { headers: { authorization: `Bearer ${pj.token}` } });
@@ -288,7 +288,7 @@ async function main() {
       { t: 'note', s: 'The gateway added the key itself. The agent never saw it.' },
     ]), f('4-call-passes'), [4, 'The call goes through the gateway. The agent never sees your key']);
 
-    // 5. аудит
+    // 5. audit
     await chrome.open(base + '/stats', [...jar], f('5-activity'), [5, 'Every request, approval and call is counted and kept in the audit log']);
 
     // GIF
