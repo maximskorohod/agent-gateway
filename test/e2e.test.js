@@ -58,6 +58,10 @@ test('мастер первого запуска', async () => {
   const secret = html.match(/Ключ вручную: <code>([A-Z2-7]+)<\/code>/)[1];
   r = await post('/setup', { step: '2', code: '000000' }); assert.equal(r.status, 302, 'неверный код → назад');
   r = await post('/setup', { step: '2', code: totpAt(secret, Math.floor(Date.now() / 30000)) }); assert.equal(r.status, 200); assert.match(await r.text(), /резервные коды/i);
+  // перезагрузка не теряет коды, пока владелец не нажал «Дальше»
+  r = await get('/setup'); assert.equal(r.status, 200); let page = await r.text(); assert.match(page, /id="backup-codes"/); assert.match(page, /data-after-save/);
+  r = await post('/setup', { step: '3' }); assert.equal(r.status, 302);
+  r = await get('/setup'); page = await r.text(); assert.doesNotMatch(page, /id="backup-codes"/); assert.match(page, /name="token"/);
   r = await post('/setup', { step: '3', mode: 'skip' }); assert.equal(r.status, 302);
   r = await get('/'); assert.equal(r.status, 200); assert.match(await r.text(), /Добавить ключ/);
   app.ctx._totpSecret = secret;

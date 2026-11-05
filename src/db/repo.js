@@ -246,7 +246,7 @@ export function createRepo(db, { demo = false } = {}) {
       "UPDATE requests SET status = 'expired', decided_at = unixepoch(), decided_via = 'timeout' WHERE status = 'pending'",
     ),
     delTempMeta: db.prepare(
-      "DELETE FROM meta WHERE key IN ('setup_totp_secret','setup_backup_codes','setup_tg_code','reissue_totp_secret','new_backup_codes') OR key LIKE 'pending:%'",
+      "DELETE FROM meta WHERE key IN ('setup_totp_secret','setup_backup_codes','setup_codes_saved','setup_tg_code','reissue_totp_secret','new_backup_codes') OR key LIKE 'pending:%'",
     ),
     delAllTotpSteps: db.prepare('DELETE FROM totp_used'),
     delAllLinks: db.prepare('DELETE FROM one_time_links'),

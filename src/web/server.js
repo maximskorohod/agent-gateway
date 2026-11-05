@@ -157,6 +157,9 @@ export async function registerWeb(fastify, ctx) {
     const o = repo.getOwner() || {};
     const step = !o.password_hash ? 1 : !o.totp_enabled ? 2 : 3;
     const data = {};
+    // Перезагрузка на экране кодов не должна терять коды: пока владелец не нажал «Дальше», показываем их снова
+    const unsaved = step === 3 && !repo.getMeta('setup_codes_saved') ? repo.getMeta('setup_backup_codes') : null;
+    if (unsaved) return html(reply, V.setup({ csrf: req.csrf, step: 2, data: { backupCodes: JSON.parse(unsaved), downloadHref: '/setup/backup-codes.txt' } }));
     if (step === 2) {
       let secret = repo.getMeta('setup_totp_secret');
       if (!secret) { secret = (await auth.beginSecondFactorEnrollment(req.session.userId)).secret; repo.setMeta('setup_totp_secret', secret); }
@@ -202,6 +205,7 @@ export async function registerWeb(fastify, ctx) {
       }
       if (mode === 'skip') { repo.setMeta('setup_backup_codes', ''); repo.setSetupDone(); repo.setMeta('onboarding_pending', '1'); repo.audit('owner', 'setup.done', null, { telegram: false }); return reply.redirect('/welcome'); }
       // «Дальше» после резервных кодов
+      repo.setMeta('setup_codes_saved', '1');
       return reply.redirect('/setup');
     }
     return reply.redirect('/setup');

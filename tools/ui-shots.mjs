@@ -149,6 +149,7 @@ async function runLang(lang, port, cdpPort) {
     await shot('02-setup-2-totp', '/setup');
     const code = () => totpAt(secret, Math.floor(Date.now() / 30000));
     await post('/setup', { step: '2', code: code() }, '/setup');
+    await post('/setup', { step: '3' }, '/setup');
     await shot('03-setup-3-telegram', '/setup');
     await post('/setup', { step: '3', mode: 'skip' }, '/setup');
     await shot('04-welcome', '/welcome');
