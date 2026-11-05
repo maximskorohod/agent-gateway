@@ -81,7 +81,12 @@ test('прогресс 0/3 → 3/3 выводится из базы; пропу�
   assert.equal(r.status, 302); assert.equal(r.headers.get('location'), '/welcome');
   const repo = c.app.repo;
   assert.equal(onboardingState(repo).count, 0);
-  assert.match((await c.get('/welcome')).text2, /0 of 3 done/);
+  const first = (await c.get('/welcome')).text2;
+  assert.match(first, /0 of 3 done/);
+  // новому пользователю Zendesk токен не выдаёт: на первом экране карточки нет, в каталоге ключей она остаётся
+  assert.doesNotMatch(first, /\/keys\/new\/zendesk/);
+  assert.match(first, /\/keys\/new\/hubspot/);
+  assert.match((await c.get('/keys/new')).text2, /\/keys\/new\/zendesk/);
   assert.match((await c.get('/')).text2, /href="\/welcome"/, 'на корне есть ссылка на онбординг');
   await c.post('/welcome/agent/script');
   assert.equal(onboardingState(repo).count, 1);

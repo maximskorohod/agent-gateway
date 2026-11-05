@@ -244,6 +244,8 @@ providers:
     keyHint: 'subdomain like mycompany (or mycompany.zendesk.com), the e-mail of the token owner and an API token. New tokens are not issued after 27 Oct 2026'
     getKeyUrl: 'https://developer.zendesk.com/api-reference/introduction/security-and-auth/'
     getKeyHint: 'Zendesk stops issuing new API tokens on 27 Oct 2026; existing tokens work until 30 Apr 2027. OAuth support comes later'
+    # A new user cannot get a token, so the card is not offered on the first-run screen; it stays in the catalog
+    onboarding: false
     readOnly: { default: true }
     # Data filter, REST style (item 7.3). unverified: see hubspot. requester_id stays (a scalar, no name or e-mail);
     # via (the channel with the sender address), custom_fields, tags and nested objects are cut out. subject and description

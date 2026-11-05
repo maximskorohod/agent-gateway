@@ -179,7 +179,7 @@ The gateway reduces what an agent can do with a key. It does not remove the trus
 - The service itself sees the key and the request data.
 - An agent can search by a hidden field and learn from the result count whether a value exists.
 - Masking has no ML and does not find names or bare digit strings.
-- Zendesk stops issuing new API tokens on 27 October 2026; existing tokens work until 30 April 2027. OAuth (client_credentials) support comes after the launch.
+- Zendesk stopped issuing new API tokens on 27 October 2026; existing tokens work until 30 April 2027. The Zendesk card therefore only suits existing tokens, is not offered on the first-run screen, and has not been tested on a live account. OAuth (client_credentials) support comes after the launch.
 - The code has not had an external security audit.
 
 The full threat model, controls, and how to report a vulnerability: [SECURITY.md](SECURITY.md).

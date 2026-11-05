@@ -333,6 +333,7 @@ function normalizeProvider(slug, raw, defaults) {
     if (u.protocol !== 'https:' || u.username || u.password) bad('getKeyUrl must be an https URL without credentials');
   }
   if (p.getKeyHint !== undefined && typeof p.getKeyHint !== 'string') bad('getKeyHint must be a string');
+  if (p.onboarding !== undefined && typeof p.onboarding !== 'boolean') bad('onboarding must be a boolean');
   if (p.accountPlaceholder !== undefined) {
     if (typeof p.accountPlaceholder !== 'string' || !p.accountPlaceholder.trim() || p.accountPlaceholder.length > 60) bad('accountPlaceholder must be a short string (up to 60 characters)');
     if (!p.fields.includes('account')) bad('accountPlaceholder is only for the account field');

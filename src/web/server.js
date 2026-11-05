@@ -322,7 +322,7 @@ export async function registerWeb(fastify, ctx) {
   // ---- онбординг «Connect your agent» (ТЗ §5): прогресс выводится из базы; токен только на странице ответа, в адреса не попадает
   fastify.get('/welcome', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
-    return html(reply, V.welcomePage({ csrf: req.csrf, state: onboardingState(repo, { telegramConnected: telegramConnected() }), providers: catalog.list(), flash: takeFlash(req) }));
+    return html(reply, V.welcomePage({ csrf: req.csrf, state: onboardingState(repo, { telegramConnected: telegramConnected() }), providers: catalog.list().filter((p) => p.onboarding !== false), flash: takeFlash(req) }));
   });
   fastify.post('/welcome/agent/:kind', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
