@@ -797,7 +797,10 @@ export async function registerWeb(fastify, ctx) {
       reply.header('retry-after', String(RETRY_AFTER_SEC));
       return html(reply, V.errorPage(503, t('error.unavailable')), 503);
     }
-    logger.error({ err: err.message, url: maskUrl(req.url), code: err.code }, 'unhandled');
-    return html(reply, V.errorPage(err.statusCode || 500, err.statusCode === 403 ? t('error.forbidden') : t('error.internal')), err.statusCode || 500);
+    const status = err.statusCode || 500;
+    // Ошибка запроса (например, обход каталога через /public/), а не сбой: иначе любой посетитель засоряет журнал ошибок
+    if (status >= 500) logger.error({ err: err.message, url: maskUrl(req.url), code: err.code }, 'unhandled');
+    else logger.info({ err: err.message, url: maskUrl(req.url), code: err.code }, 'request error');
+    return html(reply, V.errorPage(status, status === 403 ? t('error.forbidden') : t('error.internal')), status);
   });
 }

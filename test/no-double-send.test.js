@@ -43,6 +43,24 @@ test('без сессии: редирект на вход без второй о
   assert.deepEqual(doubleSends(logs), []);
 });
 
+test('обход каталога через статику: 403 или 404 и нет записи об ошибке в журнале (№16)', async () => {
+  const { logs, base } = await start();
+  const { request } = await import('node:http');
+  // fetch нормализует «..», поэтому сырой запрос
+  const raw = (p) => new Promise((resolve, reject) => {
+    const u = new URL(base);
+    const r = request({ host: u.hostname, port: u.port, path: p, method: 'GET' }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+    r.on('error', reject);
+    r.end();
+  });
+  for (const p of ['/public/../providers.yaml', '/public/%2e%2e/%2e%2e/providers.yaml']) {
+    const status = await raw(p);
+    assert.ok(status === 403 || status === 404, `${p}: ${status}`);
+  }
+  await new Promise((resolve) => { setTimeout(resolve, 100); });
+  assert.deepEqual(logs.filter((l) => l.includes('"level":50')), []);
+});
+
 test('демо без сессии: то же, что на обычной установке', async () => {
   const { logs, base } = await start({ demo: true, dataDirExplicit: true, prodHosts: [], env: {} });
   for (const p of GETS) {

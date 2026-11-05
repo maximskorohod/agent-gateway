@@ -634,6 +634,10 @@ export function createRepo(db, { demo = false } = {}) {
     setAgentEnabled(id, enabled) {
       return setAgentEnabledTx(id, Boolean(enabled));
     },
+    /** Создан ли уникальный индекс «один пропуск на заявку» (П-10); в старой базе с дубликатами его нет. */
+    hasGrantsRequestIndex() {
+      return !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'grants_request'").get();
+    },
     deleteAgent(id) {
       return st.delAgent.run(id).changes === 1;
     },

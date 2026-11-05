@@ -138,7 +138,8 @@ test('П-33 (Н-12): журнал ошибок без query — и для сай
   const r2 = await fetch(`${base}/v1/grants?token=SECRETQ2&x=1`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{bad' });
   assert.ok(r1.status >= 400 && r2.status >= 400);
   const text = logText();
-  assert.ok(/unhandled/.test(text), 'ошибка записана');
+  assert.ok(/request error/.test(text), 'ошибка запроса записана');
+  assert.ok(!/unhandled/.test(text), 'ошибка запроса не считается сбоем');
   assert.ok(!text.includes('SECRETQ1') && !text.includes('SECRETQ2') && !text.includes('x=1'));
 });
 

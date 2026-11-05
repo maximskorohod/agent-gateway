@@ -42,7 +42,9 @@ export function sendApiError(err, req, reply, logger) {
   }
   const status = err.statusCode || 500;
   if (status === 413) return reply.code(413).send({ error: 'body_too_large' }); // ошибка клиента, не сбой: в журнал не пишем
-  logger.error({ err: err.message, url, code: err.code }, 'unhandled');
+  // 4xx: ошибка запроса, а не сбой, в журнал ошибок не идёт: иначе любой посетитель его засоряет
+  if (status >= 500) logger.error({ err: err.message, url, code: err.code }, 'unhandled');
+  else logger.info({ err: err.message, url, code: err.code }, 'request error');
   return reply.code(status).send({ error: status === 400 ? 'bad_request' : 'internal' });
 }
 

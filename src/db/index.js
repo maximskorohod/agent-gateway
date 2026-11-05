@@ -42,7 +42,12 @@ export function openDb(path) {
   // Уже созданным агентам остаются все ключи (DEFAULT 1), привязку владелец включает сам.
   const agentCols = db.prepare('PRAGMA table_info(agents)').all().map((c) => c.name);
   if (!agentCols.includes('all_credentials')) db.exec('ALTER TABLE agents ADD COLUMN all_credentials INTEGER NOT NULL DEFAULT 1;');
-  // Один пропуск на заявку (П-10). В старой базе дубликатов быть не должно; если есть — индекс не создаётся, шлюз работает.
-  try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS grants_request ON grants(request_id);'); } catch { /* дубликаты в старой базе */ }
+  // Один пропуск на заявку (П-10). В старой базе дубликатов быть не должно; если есть — индекс не создаётся, шлюз работает,
+  // а buildApp пишет об этом в журнал (repo.hasGrantsRequestIndex). Прочие ошибки не скрываем.
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS grants_request ON grants(request_id);');
+  } catch (e) {
+    if (!String(e.code).startsWith('SQLITE_CONSTRAINT')) throw e;
+  }
   return db;
 }

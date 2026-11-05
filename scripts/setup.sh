@@ -2,7 +2,7 @@
 # Install or update AgentKeyGate on a VPS: Debian 12 / Ubuntu 24.04, Amazon EC2 t3.micro (1 GB RAM).
 #
 # Run as root:
-#   sudo ./setup.sh --domain gw.example.com [--repo URL] [--branch main] [--vault ssm|file] [--region eu-central-1]
+#   sudo ./setup.sh --domain gw.example.com [--repo URL] [--branch BRANCH_OR_TAG] [--vault ssm|file] [--region eu-central-1]
 #
 # The script is idempotent: a repeated run pulls the code from git, rebuilds dependencies,
 # rewrites the configs from the repository and restarts the services. At the end it runs
@@ -37,7 +37,7 @@ Usage:
   --domain   required; the domain whose A record points to the Elastic IP (Cloudflare: grey cloud)
   --repo     git repository (default: https://github.com/maximskorohod/agentkeygate.git)
              or an absolute path to a bare repository on the server (for a private repository)
-  --branch   branch (default: main)
+  --branch   branch or tag (default: the release this script belongs to)
   --vault    ssm (default, production: keys in AWS SSM via the IAM role) or file (tests only)
   --region   AWS region for SSM (default: eu-central-1)
   --behind-cloudflare  the domain is proxied by Cloudflare (orange cloud, SSL Full strict):
@@ -67,7 +67,8 @@ run_as_gw() {
 # ---------- argument parsing ----------
 DOMAIN=""
 REPO="https://github.com/maximskorohod/agentkeygate.git"
-BRANCH="main"
+# The release this script belongs to. Installing a tag instead of the moving main means the same code on every run.
+BRANCH="v1.0.1"
 VAULT="ssm"
 REGION="eu-central-1"
 BEHIND_CF=0
@@ -97,6 +98,8 @@ done
 # into a bare repository, so the server does not store GitHub tokens.
 [[ "$REPO" =~ ^https://[^[:space:]]+$ || "$REPO" =~ ^/[^[:space:]]+$ ]] \
   || die "--repo must be an https URL or an absolute path to a git repository on the server"
+# A login or token in the URL would stay in .git/config, readable by every user. The value is not printed.
+[[ ! "$REPO" =~ ^https://[^/]*@ ]] || die "--repo must not contain a login or token; use a public URL or a local repository"
 [[ "$BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]] || die "invalid branch name: $BRANCH"
 case "$VAULT" in
   ssm|file) ;;
@@ -207,12 +210,16 @@ if [[ "$REPO" == /* ]]; then
 fi
 if [[ -d "$APP_DIR/.git" ]]; then
   git "${GIT_SAFE[@]}" -C "$APP_DIR" remote set-url origin "$REPO"
-  git "${GIT_SAFE[@]}" -C "$APP_DIR" fetch --quiet origin "$BRANCH"
+  git "${GIT_SAFE[@]}" -C "$APP_DIR" fetch --quiet --tags origin "$BRANCH"
   # Below, the script runs chmod 0755 on backup.sh; in old commits the file was 0644, and git saw this as a local
   # change: pull refused to update the code (staging 04.11). Restore the file to the git version before pull.
   git "${GIT_SAFE[@]}" -C "$APP_DIR" checkout --quiet -- scripts/backup.sh
-  git "${GIT_SAFE[@]}" -C "$APP_DIR" checkout --quiet "$BRANCH"
-  git "${GIT_SAFE[@]}" -C "$APP_DIR" pull --quiet --ff-only origin "$BRANCH"
+  if git "${GIT_SAFE[@]}" -C "$APP_DIR" show-ref --verify --quiet "refs/tags/${BRANCH}"; then
+    git "${GIT_SAFE[@]}" -C "$APP_DIR" checkout --quiet --detach "refs/tags/${BRANCH}"
+  else
+    git "${GIT_SAFE[@]}" -C "$APP_DIR" checkout --quiet "$BRANCH"
+    git "${GIT_SAFE[@]}" -C "$APP_DIR" pull --quiet --ff-only origin "$BRANCH"
+  fi
 elif [[ -e "$APP_DIR" ]]; then
   die "${APP_DIR} exists but is not a git repository; remove it and run again"
 else

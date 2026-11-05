@@ -29,7 +29,9 @@ You can revoke a pass or an agent at any time. Revocation takes effect on the ne
 Point a DNS A record at the server, then run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/main/scripts/setup.sh | sudo bash -s -- --domain gw.example.com --repo https://github.com/maximskorohod/agentkeygate
+curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/v1.0.1/scripts/setup.sh -o setup.sh
+echo "40c9cc59c14ca795263b537325f624f709f3e2e670d93221d8e99ddd76147a15  setup.sh" | sha256sum -c -
+sudo bash setup.sh --domain gw.example.com
 ```
 
 The default vault is AWS SSM, which needs an instance role. Outside AWS, add `--vault file`.
@@ -194,11 +196,11 @@ The full threat model, controls, and how to report a vulnerability: [SECURITY.md
 
 Version 1.0: single owner, self-hosted. English is the default interface language. Set `GW_LANG=ru` for Russian. Setup script messages are in English. `docs/DEPLOY.md` is in English, a Russian copy is in `docs/ru/DEPLOY.md`. Code comments are mostly in Russian.
 
-Tested on a live server in this version (Ubuntu 24.04, `file` vault, behind Cloudflare): install with `setup.sh`, the setup wizard and the backup codes screen, requests and approvals over REST and MCP, keys for HubSpot, Pipedrive, Stripe, and Twilio, read-only mode and data filters on real responses, the Slack test message, one backup run.
+Tested on a live server in this version (Ubuntu 24.04, `file` vault, behind Cloudflare): install with `setup.sh`, the setup wizard and the backup codes screen, requests and approvals over REST and MCP, keys for HubSpot, Pipedrive, Stripe, and Twilio, read-only mode and data filters on real responses, the Slack test message, a backup and a full restore into a separate directory.
 
 Tested live on a local install, not yet on a server: Telegram linking and the approval button, SMTP notifications through Resend, Atlassian (read works, write is rejected), and the Airtable connection (reading records has not been checked).
 
-Not tested in this version: the `ssm` vault on AWS, Docker with a real Caddy certificate, certificate renewal behind Cloudflare, restoring a backup, macOS, and Safari. Reports are welcome.
+Not tested in this version: the `ssm` vault on AWS, Docker with a real Caddy certificate, certificate renewal behind Cloudflare, macOS, and Safari. Reports are welcome.
 
 ## Roadmap
 

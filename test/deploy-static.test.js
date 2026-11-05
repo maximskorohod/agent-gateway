@@ -1,6 +1,7 @@
 // Статические проверки серверных файлов (Н-9, Н-10, Н-11): без сети, без сервера.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -45,10 +46,40 @@ test('nftables.conf: IMDS 169.254.169.254 открыт только с --vault s
 
 test('setup.sh: перед pull возвращает backup.sh к версии из git (свой chmod не блокирует обновление, staging)', () => {
   const lines = read('scripts/setup.sh').split('\n');
-  const fetch = lines.findIndex((l) => /fetch --quiet origin "\$BRANCH"/.test(l));
+  const fetch = lines.findIndex((l) => /fetch --quiet --tags origin "\$BRANCH"/.test(l));
   const co = lines.findIndex((l) => /checkout --quiet -- scripts\/backup\.sh/.test(l));
   const pull = lines.findIndex((l) => /pull --quiet --ff-only/.test(l));
   assert.ok(fetch >= 0 && co > fetch && co < pull, 'checkout -- scripts/backup.sh между fetch и pull');
+});
+
+test('установка с тега: версия, тег в setup.sh и sha256 в документах совпадают (I-01)', () => {
+  const version = JSON.parse(read('package.json')).version;
+  const setup = read('scripts/setup.sh');
+  assert.match(setup, new RegExp(`^BRANCH="v${version.replaceAll('.', '\\.')}"$`, 'm'), 'тег по умолчанию');
+  const sha = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'scripts/setup.sh'))).digest('hex');
+  for (const doc of ['README.md', 'docs/DEPLOY.md', 'docs/ru/DEPLOY.md']) {
+    const text = read(doc);
+    assert.ok(text.includes(`agentkeygate/v${version}/scripts/setup.sh`), `${doc}: ссылка на тег`);
+    assert.ok(text.includes(sha), `${doc}: sha256 скрипта`);
+    assert.ok(!text.includes('agentkeygate/main/scripts/setup.sh'), `${doc}: установка с main`);
+  }
+});
+
+test('setup.sh: логин и токен в --repo отклоняются, тег ставится без pull (I-06, I-01)', () => {
+  const setup = read('scripts/setup.sh');
+  assert.ok(setup.includes('^https://[^/]*@'), 'проверка логина в адресе');
+  const lines = setup.split('\n');
+  const tag = lines.findIndex((l) => l.includes('show-ref --verify --quiet "refs/tags/'));
+  const pull = lines.findIndex((l) => /\bpull --quiet --ff-only\b/.test(l));
+  assert.ok(tag >= 0 && pull > tag, 'проверка тега до pull');
+});
+
+test('backup.sh: симлинки в каталоге данных не читаются от root (I-10)', () => {
+  const backup = read('scripts/backup.sh');
+  assert.ok(backup.includes('symbolic link in the data directory'));
+  assert.ok(backup.includes('symbolic link instead of the vault file'));
+  assert.ok(backup.includes('cp -P "${DATA_DIR}/vault.json"'));
+  assert.ok(backup.includes('chown --reference="$DB"'));
 });
 
 test('setup.sh: каталог сборки открыт пользователю gateway на вход (staging: mktemp -d даёт 0700)', () => {

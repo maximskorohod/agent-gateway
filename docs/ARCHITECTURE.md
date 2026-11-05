@@ -68,7 +68,8 @@ export function openDb(path)   // -> Database (better-sqlite3), applies schema.s
 ## db/repo.js: all database queries. The constructor takes db.
 ```js
 export function createRepo(db, { demo = false } = {}) => ({
-  // demo (only with demo:true): demoWipe(), demoIsolationFacts(), demoResetAge(), demoMarkReset(): see the demo/ section
+  // demo (only with demo:true): demoWipe(), demoIsolationFacts(), demoResetAge(), demoMarkReset(), demoEvictAgent(id), demoEvictCredential(id): see the demo/ section
+  // hasGrantsRequestIndex() -> boolean: false for an old database with duplicate grants; buildApp logs an error, the gateway still starts
   // meta
   getMeta(key), setMeta(key, value),
   // owner

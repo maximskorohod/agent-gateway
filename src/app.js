@@ -42,6 +42,7 @@ export async function buildApp(overrides = {}) {
   setWaitlistUrl(waitlistUrl);
   const db = openDb(cfg.dbPath);
   const repo = createRepo(db, { demo: cfg.demo });
+  if (!repo.hasGrantsRequestIndex()) logger.error({}, 'grants_request index missing: duplicate grants for one request in the database');
   // Миграция каталога (П-24): bitrix24 с чужим хостом → bitrix24-box; секреты не трогаются. В демо данных владельца нет
   const migrated = cfg.demo ? [] : migrateCatalog(repo, catalog);
   if (migrated.length) logger.info({ n: migrated.length }, 'catalog.migrated: bitrix24 → bitrix24-box');

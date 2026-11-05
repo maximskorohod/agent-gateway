@@ -68,7 +68,8 @@ curl -s -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/met
 На сервере от root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/main/scripts/setup.sh -o /root/setup.sh
+curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/v1.0.1/scripts/setup.sh -o /root/setup.sh
+echo "40c9cc59c14ca795263b537325f624f709f3e2e670d93221d8e99ddd76147a15  /root/setup.sh" | sha256sum -c -
 sudo bash /root/setup.sh --domain gw.example.com --vault ssm --region eu-central-1
 ```
 

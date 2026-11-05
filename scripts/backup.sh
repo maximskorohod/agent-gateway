@@ -23,8 +23,8 @@ umask 077
 
 readonly DATA_DIR="${GW_BACKUP_DATA_DIR:-/var/lib/agentkeygate}"
 readonly DB="${DATA_DIR}/gw.db"
-readonly BACKUP_DIR="/var/backups/agentkeygate"
-readonly AGE_PUB="/etc/agentkeygate/backup.age.pub"
+readonly BACKUP_DIR="${GW_BACKUP_DIR:-/var/backups/agentkeygate}"
+readonly AGE_PUB="${GW_BACKUP_AGE_PUB:-/etc/agentkeygate/backup.age.pub}"
 readonly GPG_PASS="/etc/agentkeygate/backup.pass"
 readonly BACKUP_ENV="/etc/agentkeygate/backup.env"
 readonly GW_ENV="/etc/agentkeygate/env"
@@ -46,6 +46,10 @@ fi
 
 command -v sqlite3 >/dev/null 2>&1 || { log "ERROR: sqlite3 is not installed"; exit 1; }
 [[ -f "$DB" ]] || { log "ERROR: database not found: $DB"; exit 1; }
+# The data directory belongs to the gateway user and this script runs as root: a link there must not make root read other files.
+for f in "$DB" "${DB}-wal" "${DB}-shm"; do
+  [[ ! -L "$f" ]] || { log "ERROR: symbolic link in the data directory: $f"; exit 1; }
+done
 
 install -d -m 0700 -o root -g root "$BACKUP_DIR"
 
@@ -78,16 +82,21 @@ fi
 
 sqlite3 "$DB" ".backup '${PLAIN}'"
 [[ -s "$PLAIN" ]] || { log "ERROR: snapshot was not created"; rm_plain; exit 1; }
+# If the gateway was stopped, sqlite3 created -wal and -shm as root, and the gateway would not start with them.
+for f in "${DB}-wal" "${DB}-shm"; do
+  if [[ -e "$f" && ! -L "$f" ]]; then chown --reference="$DB" "$f"; fi
+done
 
 SRC="$PLAIN"
 NAME_BASE="gw-${STAMP}.db"
 if [[ "$VAULT_MODE" == "file" ]]; then
   command -v tar >/dev/null 2>&1 || { log "ERROR: tar is not installed"; exit 1; }
   [[ -f "${DATA_DIR}/vault.json" && -f "${DATA_DIR}/master.key" ]] || { log "ERROR: GW_VAULT=file, but vault.json or master.key not found in ${DATA_DIR}"; exit 1; }
+  [[ ! -L "${DATA_DIR}/vault.json" && ! -L "${DATA_DIR}/master.key" ]] || { log "ERROR: symbolic link instead of the vault file"; exit 1; }
   install -d -m 0700 "$STAGE"
   mv "$PLAIN" "${STAGE}/gw.db"
-  cp "${DATA_DIR}/vault.json" "${STAGE}/vault.json"
-  cp "${DATA_DIR}/master.key" "${STAGE}/master.key"
+  cp -P "${DATA_DIR}/vault.json" "${STAGE}/vault.json"
+  cp -P "${DATA_DIR}/master.key" "${STAGE}/master.key"
   tar -C "$STAGE" -cf "$TARBALL" gw.db vault.json master.key
   rm -rf "$STAGE"
   SRC="$TARBALL"
