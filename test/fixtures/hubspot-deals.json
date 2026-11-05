@@ -1,0 +1,69 @@
+{
+  "list": {
+    "results": [
+      {
+        "id": "501",
+        "properties": {
+          "amount": "1500",
+          "closedate": "2026-12-01T00:00:00.000Z",
+          "createdate": "2026-10-01T09:00:00.000Z",
+          "dealname": "Website redesign",
+          "dealstage": "qualifiedtobuy",
+          "description": "Call Anna Example, anna@example.com, +1 555 010 0199",
+          "hs_lastmodifieddate": "2026-10-20T10:00:00.000Z",
+          "hs_object_id": "501",
+          "hubspot_owner_id": "77",
+          "pipeline": "default",
+          "contact_email": "buyer@example.com"
+        },
+        "createdAt": "2026-10-01T09:00:00.000Z",
+        "updatedAt": "2026-10-20T10:00:00.000Z",
+        "archived": false,
+        "associations": {
+          "contacts": { "results": [{ "id": "9001", "type": "deal_to_contact" }] }
+        }
+      },
+      {
+        "id": "502",
+        "properties": {
+          "amount": "300",
+          "createdate": "2026-10-05T09:00:00.000Z",
+          "dealname": "Support plan",
+          "dealstage": "closedwon",
+          "hs_lastmodifieddate": "2026-10-21T10:00:00.000Z",
+          "hs_object_id": "502",
+          "hubspot_owner_id": "78",
+          "pipeline": "default"
+        },
+        "createdAt": "2026-10-05T09:00:00.000Z",
+        "updatedAt": "2026-10-21T10:00:00.000Z",
+        "archived": false
+      }
+    ],
+    "paging": {
+      "next": { "after": "502", "link": "https://api.hubapi.com/crm/v3/objects/deals?after=502" }
+    }
+  },
+  "single": {
+    "id": "501",
+    "properties": {
+      "amount": "1500",
+      "closedate": "2026-12-01T00:00:00.000Z",
+      "createdate": "2026-10-01T09:00:00.000Z",
+      "dealname": "Website redesign",
+      "dealstage": "qualifiedtobuy",
+      "description": "Call Anna Example, anna@example.com, +1 555 010 0199",
+      "hs_lastmodifieddate": "2026-10-20T10:00:00.000Z",
+      "hs_object_id": "501",
+      "hubspot_owner_id": "77",
+      "pipeline": "default",
+      "contact_email": "buyer@example.com"
+    },
+    "createdAt": "2026-10-01T09:00:00.000Z",
+    "updatedAt": "2026-10-20T10:00:00.000Z",
+    "archived": false,
+    "associations": {
+      "contacts": { "results": [{ "id": "9001", "type": "deal_to_contact" }] }
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "list": {
+    "success": true,
+    "data": [
+      {
+        "id": 31,
+        "creator_user_id": { "id": 11, "name": "Owner Example", "email": "owner@example.com", "value": 11 },
+        "user_id": { "id": 11, "name": "Owner Example", "email": "owner@example.com", "has_pic": 0, "value": 11 },
+        "person_id": {
+          "name": "Anna Example",
+          "email": [{ "label": "work", "value": "anna@example.com", "primary": true }],
+          "phone": [{ "label": "work", "value": "+1 555 010 0199", "primary": true }],
+          "value": 7
+        },
+        "org_id": { "name": "Example Corp", "people_count": 2, "owner_id": 11, "address": "1 Example Street", "value": 5 },
+        "stage_id": 2,
+        "title": "Website redesign",
+        "value": 1500,
+        "currency": "EUR",
+        "add_time": "2026-10-01 09:00:00",
+        "update_time": "2026-10-20 10:00:00",
+        "close_time": null,
+        "status": "open",
+        "pipeline_id": 1,
+        "expected_close_date": "2026-12-01",
+        "person_name": "Anna Example",
+        "org_name": "Example Corp",
+        "owner_name": "Owner Example",
+        "cc_email": "company+deal31@pipedrivemail.com",
+        "abcdef0123456789abcdef0123456789abcdef01": "custom value with anna@example.com"
+      },
+      {
+        "id": 32,
+        "user_id": { "id": 12, "name": "Second Owner", "email": "second@example.com", "value": 12 },
+        "person_id": null,
+        "org_id": null,
+        "stage_id": 3,
+        "title": "Support plan",
+        "value": 300,
+        "currency": "EUR",
+        "add_time": "2026-10-05 09:00:00",
+        "update_time": "2026-10-21 10:00:00",
+        "close_time": "2026-10-21 10:00:00",
+        "status": "won",
+        "pipeline_id": 1,
+        "expected_close_date": null,
+        "person_name": null,
+        "org_name": null,
+        "owner_name": "Second Owner"
+      }
+    ],
+    "additional_data": {
+      "pagination": { "start": 0, "limit": 100, "more_items_in_collection": true, "next_start": 100 }
+    }
+  },
+  "single": {
+    "success": true,
+    "data": {
+      "id": 31,
+      "user_id": { "id": 11, "name": "Owner Example", "email": "owner@example.com", "value": 11 },
+      "person_id": {
+        "name": "Anna Example",
+        "email": [{ "label": "work", "value": "anna@example.com", "primary": true }],
+        "phone": [{ "label": "work", "value": "+1 555 010 0199", "primary": true }],
+        "value": 7
+      },
+      "org_id": { "name": "Example Corp", "value": 5 },
+      "stage_id": 2,
+      "title": "Website redesign",
+      "value": 1500,
+      "currency": "EUR",
+      "add_time": "2026-10-01 09:00:00",
+      "update_time": "2026-10-20 10:00:00",
+      "close_time": null,
+      "status": "open",
+      "pipeline_id": 1,
+      "expected_close_date": "2026-12-01",
+      "person_name": "Anna Example",
+      "org_name": "Example Corp",
+      "owner_name": "Owner Example"
+    }
+  }
+}

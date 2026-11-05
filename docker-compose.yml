@@ -1,0 +1,51 @@
+# agent-gateway with Caddy for TLS. The gateway port is not published: only Caddy is reachable.
+#
+#   cp .env.example .env        # then edit DOMAIN and GW_PUBLIC_URL
+#   docker compose up -d
+#   docker compose exec gateway node bin/gateway.js init   # prints the one-time setup link (15 min)
+
+services:
+  gateway:
+    build: .
+    image: agent-gateway:local
+    init: true
+    env_file: .env
+    environment:
+      # Listen on all interfaces inside the Docker network. Only Caddy can reach this port.
+      GW_HOST: 0.0.0.0
+      GW_DATA_DIR: /data
+      # Caddy в соседнем контейнере: доверяем X-Forwarded-For из подсетей Docker, иначе у всех клиентов будет IP Caddy
+      GW_TRUST_PROXY: 172.16.0.0/12
+    volumes:
+      - gateway-data:/data
+    expose:
+      - "8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      gateway:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.docker:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  gateway-data:
+  caddy_data:
+  caddy_config:

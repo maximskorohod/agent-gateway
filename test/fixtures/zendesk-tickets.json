@@ -1,0 +1,92 @@
+{
+  "list": {
+    "tickets": [
+      {
+        "url": "https://acme.zendesk.com/api/v2/tickets/101.json",
+        "id": 101,
+        "external_id": null,
+        "via": {
+          "channel": "email",
+          "source": {
+            "from": { "address": "anna@example.com", "name": "Anna Example" },
+            "to": { "address": "support@acme.example", "name": "Acme Support" },
+            "rel": null
+          }
+        },
+        "created_at": "2026-10-01T09:00:00Z",
+        "updated_at": "2026-10-20T10:00:00Z",
+        "type": "problem",
+        "subject": "Cannot log in, my phone is +1 555 010 0199",
+        "raw_subject": "Cannot log in",
+        "description": "Hello, this is Anna Example, anna@example.com. I cannot log in.",
+        "priority": "normal",
+        "status": "open",
+        "recipient": "support@acme.example",
+        "requester_id": 4001,
+        "submitter_id": 4001,
+        "assignee_id": 3001,
+        "organization_id": 2001,
+        "group_id": 1001,
+        "collaborator_ids": [4002],
+        "email_cc_ids": [4002],
+        "follower_ids": [],
+        "tags": ["login", "vip"],
+        "custom_fields": [{ "id": 9001, "value": "anna@example.com" }],
+        "satisfaction_rating": { "score": "good", "comment": "Thanks, Anna" },
+        "due_at": null
+      },
+      {
+        "url": "https://acme.zendesk.com/api/v2/tickets/102.json",
+        "id": 102,
+        "via": { "channel": "web", "source": { "from": {}, "to": {}, "rel": null } },
+        "created_at": "2026-10-05T09:00:00Z",
+        "updated_at": "2026-10-21T10:00:00Z",
+        "type": "question",
+        "subject": "Invoice question",
+        "description": "Where is my invoice? Contact: buyer@example.com",
+        "priority": "high",
+        "status": "pending",
+        "requester_id": 4003,
+        "submitter_id": 3001,
+        "assignee_id": 3001,
+        "group_id": 1001,
+        "tags": [],
+        "custom_fields": [],
+        "due_at": null
+      }
+    ],
+    "next_page": null,
+    "previous_page": null,
+    "count": 2
+  },
+  "single": {
+    "ticket": {
+      "url": "https://acme.zendesk.com/api/v2/tickets/101.json",
+      "id": 101,
+      "via": {
+        "channel": "email",
+        "source": { "from": { "address": "anna@example.com", "name": "Anna Example" }, "to": {}, "rel": null }
+      },
+      "created_at": "2026-10-01T09:00:00Z",
+      "updated_at": "2026-10-20T10:00:00Z",
+      "type": "problem",
+      "subject": "Cannot log in, my phone is +1 555 010 0199",
+      "description": "Hello, this is Anna Example, anna@example.com. I cannot log in.",
+      "priority": "normal",
+      "status": "open",
+      "requester_id": 4001,
+      "submitter_id": 4001,
+      "assignee_id": 3001,
+      "organization_id": 2001,
+      "group_id": 1001,
+      "collaborator_ids": [4002],
+      "tags": ["login", "vip"],
+      "custom_fields": [{ "id": 9001, "value": "anna@example.com" }],
+      "due_at": null
+    }
+  },
+  "sideload": {
+    "tickets": [{ "id": 101, "requester_id": 4001, "status": "open" }],
+    "users": [{ "id": 4001, "name": "Anna Example", "email": "anna@example.com", "phone": "+1 555 010 0199" }]
+  }
+}

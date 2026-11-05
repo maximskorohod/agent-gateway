@@ -1,0 +1,26 @@
+# Keep the build context small and free of local state and secrets.
+# node_modules is installed inside the image: host builds of native modules do not work there.
+node_modules
+npm-debug.log*
+
+# Local data, keys and environment files
+data
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+
+# Not needed at runtime
+.git
+.gitignore
+.github
+docs
+test
+scripts
+deploy
+Dockerfile
+.dockerignore
+docker-compose.yml
+Caddyfile.docker
+assets/demo.gif

@@ -1,0 +1,226 @@
+// Онбординг «Connect your agent» (ТЗ §5, пункт 6.5): прогресс, карточки, токен один раз, «It works», пропуск.
+// Без внешней сети: mock-сервис на localhost. Токены в тестах не пишутся: берутся из ответов сервера.
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { buildApp } from '../src/app.js';
+import { makeLink } from '../src/auth/links.js';
+import { totpAt } from '../src/auth/totp.js';
+import { initI18n } from '../src/i18n.js';
+import { onboardingState, needsWelcome, snippetFor } from '../src/web/onboarding.js';
+
+initI18n('en');
+
+const PASSWORD = 'correct-horse-battery';
+const BOT = '123456:' + 'A'.repeat(35);
+const CSP = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'";
+const WAITLIST = 'https://example.com/waitlist';
+const cleanup = [];
+after(async () => { for (const f of cleanup.reverse()) await f(); });
+
+let mock, mockPort;
+async function startMock() {
+  if (mock) return;
+  mock = http.createServer((req, res) => { res.setHeader('content-type', 'application/json'); req.resume(); req.on('end', () => res.end('{"ok":true}')); });
+  await new Promise((r) => mock.listen(0, '127.0.0.1', r));
+  mockPort = mock.address().port;
+  cleanup.push(() => new Promise((r) => { mock.closeAllConnections(); mock.close(r); }));
+}
+
+/** Приложение + владелец, прошедший мастер (пропуск Telegram); сессия со свежим кодом. */
+async function boot(extra = {}) {
+  await startMock();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-onb-'));
+  const app = await buildApp({
+    dataDir, dbPath: path.join(dataDir, 'gw.db'), vaultFile: path.join(dataDir, 'vault.json'), masterKeyFile: path.join(dataDir, 'master.key'),
+    lang: 'en', port: 0, host: '127.0.0.1', publicUrl: 'http://127.0.0.1', logLevel: 'silent',
+    testUpstream: { 'api.telegram.org': `http://127.0.0.1:${mockPort}` }, ...extra,
+  });
+  await app.start();
+  cleanup.push(() => app.stop());
+  const base = `http://127.0.0.1:${app.fastify.server.address().port}`;
+  const jar = new Map();
+  const c = { token: '', app, base };
+  const store = (res) => { for (const s of res.headers.getSetCookie?.() || []) { const [kv, ...attrs] = s.split(';'); const [k, v] = kv.split('='); if (attrs.some((a) => /max-age=0/i.test(a))) jar.delete(k); else jar.set(k, v); } };
+  const cookie = () => [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
+  c.get = async (p) => {
+    const r = await fetch(base + p, { headers: { cookie: cookie() }, redirect: 'manual' }); store(r);
+    const text = await r.clone().text(); const m = text.match(/name="_csrf" value="([^"]+)"/); if (m) c.token = m[1];
+    r.text2 = text; return r;
+  };
+  c.post = async (p, fields = {}) => {
+    const body = new URLSearchParams({ _csrf: c.token, ...fields });
+    const r = await fetch(base + p, { method: 'POST', headers: { cookie: cookie(), 'content-type': 'application/x-www-form-urlencoded' }, body, redirect: 'manual' }); store(r);
+    r.text2 = await r.clone().text(); const m = r.text2.match(/name="_csrf" value="([^"]+)"/); if (m) c.token = m[1];
+    return r;
+  };
+  const { token } = makeLink(app.repo, 'setup', 900, base);
+  await c.get(`/setup/${token}`); await c.get('/setup');
+  await c.post('/setup', { step: '1', password: PASSWORD, password_repeat: PASSWORD });
+  const page = (await c.get('/setup')).text2;
+  const secret = page.match(/Manual key: <code>([A-Z2-7]+)<\/code>/)?.[1] || page.match(/([A-Z2-7]{16,})<\/code>/)[1];
+  await c.post('/setup', { step: '2', code: totpAt(secret, Math.floor(Date.now() / 30000)) });
+  c.finish = () => c.post('/setup', { step: '3', mode: 'skip' });
+  c.setTotp = (v) => {
+    // totp_at сессии (по sha256 cookie) — как в тестах черновиков
+    const sha = app.db.prepare('SELECT id_hash FROM sessions').all();
+    for (const s of sha) app.db.prepare('UPDATE sessions SET totp_at = ? WHERE id_hash = ?').run(v, s.id_hash);
+  };
+  return c;
+}
+
+const tokenIn = (s) => s.match(/gwa_[A-Za-z0-9_-]+/)?.[0];
+const agentsOf = (c) => c.app.repo.listAgents();
+
+test('прогресс 0/3 → 3/3 выводится из базы; пропуск шага уведомлений', async () => {
+  const c = await boot();
+  const r = await c.finish();
+  assert.equal(r.status, 302); assert.equal(r.headers.get('location'), '/welcome');
+  const repo = c.app.repo;
+  assert.equal(onboardingState(repo).count, 0);
+  assert.match((await c.get('/welcome')).text2, /0 of 3 done/);
+  assert.match((await c.get('/')).text2, /href="\/welcome"/, 'на корне есть ссылка на онбординг');
+  await c.post('/welcome/agent/script');
+  assert.equal(onboardingState(repo).count, 1);
+  assert.equal(onboardingState(repo).agent, true);
+  assert.equal(needsWelcome(onboardingState(repo)), false, 'агент есть: ссылка с корня исчезает');
+  const k = await c.post('/keys/new/telegram', { key: BOT, label: 'bot', mode: 'ask', approval: 'web_button', max_ttl: '3600', max_calls: '3', max_parallel: '2' });
+  assert.equal(k.status, 302);
+  assert.equal(onboardingState(repo).count, 2);
+  assert.equal(onboardingState(repo, { telegramConnected: true }).count, 3, 'Telegram подключён = шаг 3');
+  assert.match((await c.get('/welcome')).text2, /2 of 3 done/);
+  const s = await c.post('/welcome/skip-notify');
+  assert.equal(s.status, 302);
+  assert.equal(onboardingState(repo).count, 3);
+  assert.match((await c.get('/welcome')).text2, /3 of 3 done/);
+});
+
+test('карточка создаёт ровно одного агента, токен виден один раз, no-store; сниппет Claude Code с publicUrl/mcp', async () => {
+  const c = await boot();
+  await c.finish(); await c.get('/welcome');
+  const r = await c.post('/welcome/agent/claude-code');
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('cache-control'), 'no-store');
+  assert.equal(agentsOf(c).length, 1);
+  assert.equal(agentsOf(c)[0].name, 'Claude Code');
+  const tok = tokenIn(r.text2);
+  assert.ok(tok, 'токен показан');
+  assert.ok(r.text2.includes('claude mcp add --transport http'));
+  assert.ok(r.text2.includes('http://127.0.0.1/mcp'), 'publicUrl + /mcp');
+  assert.ok(r.text2.includes(`--header &quot;Authorization: Bearer ${tok}&quot;`), 'заголовок со своим токеном (экранирован)');
+  assert.match(r.text2, /data-copy="#snippet"/);
+  assert.doesNotMatch(r.text2, /<script(?![^>]*\ssrc="\/public\/)/i, 'нет инлайн-скриптов');
+  assert.equal(r.headers.get('content-security-policy'), CSP);
+  // перезагрузка: токена нет, агент один
+  for (const p of ['/welcome', '/agents', '/']) assert.equal(tokenIn((await c.get(p)).text2), undefined, p);
+  assert.equal(agentsOf(c).length, 1);
+  // в БД и аудите токена нет
+  assert.ok(!JSON.stringify(c.app.repo.listAudit({ limit: 200 })).includes(tok));
+});
+
+test('без свежего кода карточка уходит в черновик; после кода создаётся один агент; gwa_ нет в адресах', async () => {
+  const c = await boot();
+  await c.finish(); await c.get('/welcome');
+  c.setTotp(1000); // код давно не вводился
+  const r = await c.post('/welcome/agent/cursor');
+  assert.equal(r.status, 302);
+  const loc = r.headers.get('location');
+  assert.match(loc, /^\/totp\?next=\/pending\/[A-Za-z0-9_-]{22}$/);
+  assert.ok(!loc.includes('gwa_'));
+  assert.equal(agentsOf(c).length, 0);
+  c.setTotp(Math.floor(Date.now() / 1000));
+  const id = loc.split('/pending/')[1];
+  const page = await c.get(`/pending/${id}`); assert.equal(page.status, 200);
+  const done = await c.post(`/pending/${id}/apply`);
+  assert.equal(done.status, 200);
+  assert.equal(agentsOf(c).length, 1); assert.equal(agentsOf(c)[0].name, 'Cursor');
+  const tok = tokenIn(done.text2);
+  assert.ok(tok);
+  assert.ok(done.text2.includes('mcp.json') || done.text2.includes('&quot;mcpServers&quot;'), 'сниппет Cursor');
+  assert.ok(!done.text2.includes('cursor://'), 'deep-link не используется');
+  const again = await c.post(`/pending/${id}/apply`);
+  assert.notEqual(again.status, 200, 'черновик одноразовый');
+  assert.equal(agentsOf(c).length, 1);
+});
+
+test('сниппеты всех карточек; кривой вид карточки даёт 404', async () => {
+  const c = await boot();
+  await c.finish(); await c.get('/welcome');
+  const seen = [];
+  for (const k of ['chatgpt', 'claude-code', 'cursor', 'claude-desktop', 'script']) {
+    const r = await c.post(`/welcome/agent/${k}`);
+    assert.equal(r.status, 200, k);
+    const loc = r.headers.get('location'); assert.equal(loc, null);
+    assert.ok(!/href="[^"]*gwa_/.test(r.text2), `${k}: токена нет в href`);
+    seen.push(r.text2);
+  }
+  assert.equal(agentsOf(c).length, 5);
+  assert.ok(seen[4].includes('/v1/grants'), 'curl для скрипта');
+  assert.ok(seen[3].includes('mcp-remote'));
+  assert.ok(seen[0].includes('openapi'));
+  assert.equal((await c.post('/welcome/agent/evil')).status, 404);
+  assert.equal(agentsOf(c).length, 5);
+  assert.ok(snippetFor('claude-code', { publicUrl: 'https://gw.example', token: 'T' }).includes('https://gw.example/mcp'));
+});
+
+test('«It works» после успешного вызова через прокси; лист ожидания и ссылка на Activity', async () => {
+  const c = await boot({ waitlistUrl: WAITLIST });
+  await c.finish(); await c.get('/welcome');
+  assert.doesNotMatch((await c.get('/welcome')).text2, /It works/);
+  const created = await c.post('/welcome/agent/script');
+  const agentToken = tokenIn(created.text2);
+  await c.post('/keys/new/telegram', { key: BOT, label: 'bot', mode: 'ask', approval: 'web_button', max_ttl: '3600', max_calls: '3', max_parallel: '2' });
+  const hdr = { authorization: `Bearer ${agentToken}`, 'content-type': 'application/json' };
+  let g = await fetch(`${c.base}/v1/grants`, { method: 'POST', headers: hdr, body: JSON.stringify({ provider: 'telegram', ttl: 600, calls: 2 }) });
+  assert.equal(g.status, 202);
+  const reqId = (await g.json()).request_id;
+  await c.get('/');
+  assert.equal((await c.post(`/requests/${reqId}/approve`)).status, 302);
+  g = await fetch(`${c.base}/v1/grants/${reqId}`, { headers: { authorization: `Bearer ${agentToken}` } });
+  const pass = (await g.json()).token;
+  assert.match((await c.get('/welcome')).text2, /2 of 3 done|1 of 3 done/);
+  assert.doesNotMatch((await c.get('/welcome')).text2, /It works/, 'вызовов ещё не было');
+  const call = await fetch(`${c.base}/v1/proxy/telegram/getMe`, { headers: { authorization: `Bearer ${pass}` } });
+  assert.equal(call.status, 200);
+  assert.equal(c.app.repo.countOkCalls(), 1);
+  const w = (await c.get('/welcome')).text2;
+  assert.match(w, /It works/);
+  assert.match(w, /href="\/stats"/);
+  assert.ok(w.includes(`href="${WAITLIST}"`), 'лист ожидания из config.waitlistUrl');
+  assert.ok(!w.includes(BOT), 'ключ нигде не показан');
+});
+
+test('пропуск онбординга убирает ссылку с корня; страницы без инлайн-скриптов и внешних ресурсов', async () => {
+  const c = await boot();
+  await c.finish();
+  const w = await c.get('/welcome');
+  assert.equal(w.status, 200);
+  assert.equal(w.headers.get('content-security-policy'), CSP);
+  assert.equal(w.headers.get('cache-control'), 'no-store');
+  for (const html of [w.text2, (await c.get('/')).text2]) {
+    assert.doesNotMatch(html, /<script(?![^>]*\ssrc="\/public\/[a-z.]+")[^>]*>/i, 'нет инлайн-скриптов');
+    assert.doesNotMatch(html, /\son[a-z]+\s*=/i, 'нет inline-обработчиков');
+    assert.doesNotMatch(html, /<(?:script|link|img|iframe)\b[^>]*\b(?:src|href)="(?:https?:)?\/\//i, 'нет внешних загрузок');
+    assert.doesNotMatch(html, /\bstyle="/i);
+  }
+  assert.match((await c.get('/')).text2, /href="\/welcome"/);
+  const s = await c.post('/welcome/skip');
+  assert.equal(s.status, 302); assert.equal(s.headers.get('location'), '/');
+  const root = await c.get('/');
+  assert.equal(root.status, 200);
+  assert.doesNotMatch(root.text2, /href="\/welcome"/, 'после пропуска ссылки нет');
+  assert.equal(onboardingState(c.app.repo).skipped, true);
+});
+
+test('онбординг только для владельца: без сессии — на вход', async () => {
+  const c = await boot();
+  await c.finish();
+  const r = await fetch(`${c.base}/welcome`, { redirect: 'manual' });
+  assert.equal(r.status, 302); assert.equal(r.headers.get('location'), '/login');
+  const p = await fetch(`${c.base}/welcome/agent/script`, { method: 'POST', redirect: 'manual' });
+  assert.ok([302, 403].includes(p.status));
+  assert.equal(agentsOf(c).length, 0);
+});

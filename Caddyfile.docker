@@ -1,0 +1,62 @@
+# Caddy in front of the gateway container (see docker-compose.yml).
+# DOMAIN is taken from the environment (.env). Ports 80 and 443 must be reachable from the internet:
+# port 80 is used by Let's Encrypt for the certificate.
+{
+	servers {
+		# HTTP/3 is off: docker-compose.yml publishes TCP 443 only, an advertised h3 would make browsers wait for QUIC.
+		protocols h1 h2
+	}
+	# Caddy's own log (reverse_proxy errors): same filters as the access log, otherwise it carries query strings and headers.
+	log default {
+		output stderr
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "\?.*$" ""
+				request>headers delete
+			}
+		}
+	}
+}
+
+{$DOMAIN} {
+	# Request body limit: Deepgram accepts files up to 200 MB. The gateway enforces the 2 MB limit for other requests.
+	request_body {
+		max_size 210MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	# One-time links /l/<token> and /setup/<code> carry a secret in the path: they are not logged at all.
+	@secret_paths path /l/* /setup/*
+	log_skip @secret_paths
+
+	# Access log without query strings and without request headers.
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "\?.*$" ""
+				request>headers delete
+			}
+		}
+	}
+
+	reverse_proxy gateway:8080 {
+		# Streamed responses (proxied service calls) are not buffered.
+		flush_interval -1
+		# Pass only the client address, not a chain. The gateway reads it only from loopback peers.
+		header_up X-Forwarded-For {client_ip}
+		# Deepgram can take up to 600 s before the response headers arrive.
+		transport http {
+			response_header_timeout 620s
+		}
+	}
+}

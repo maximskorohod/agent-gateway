@@ -1,0 +1,77 @@
+# systemd-юнит шлюза agent-gateway. Устанавливается setup.sh в /etc/systemd/system/gateway.service.
+
+[Unit]
+Description=Agent Gateway (шлюз временного доступа к API для ИИ-агентов)
+Documentation=file:///opt/agent-gateway/app/docs/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+# Не прекращать попытки запуска при сбоях (fail-closed: агенты получают 503, а не падение юнита).
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# Пользователь gateway создаётся setup.sh как системный (без shell).
+# DynamicUser здесь намеренно не используется: нужен стабильный uid, потому что на него
+# завязаны владение /var/lib/agent-gateway, правила nftables (meta skuid gateway),
+# IAM-доступ к SSM и владение бэкапами. Динамический uid менялся бы при каждом запуске.
+User=gateway
+Group=gateway
+EnvironmentFile=/etc/agent-gateway/env
+WorkingDirectory=/opt/agent-gateway/app
+# DEP0040: встроенный punycode зовёт tr46 из цепочки grammy → node-fetch@2; другие предупреждения видны.
+ExecStart=/usr/bin/node --disable-warning=DEP0040 bin/gateway.js start
+Restart=always
+RestartSec=3
+
+# ---- харденинг ----
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/agent-gateway
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+# Нужно no: V8 (JIT) создаёт исполняемые страницы памяти; с yes Node не запустится.
+MemoryDenyWriteExecute=no
+LimitCORE=0
+LimitNOFILE=65536
+UMask=0077
+
+# ---- дополнительный харденинг (Н-9) ----
+# ПРОВЕРИТЬ НА СЕРВЕРЕ: `systemd-analyze security gateway` (оценка экспозиции) и
+# `journalctl -u gateway -n 50` после рестарта: юнит должен подняться и отвечать на /healthz.
+# Порту 8080 и чтению /etc/ssl (AWS SDK, TLS к провайдерам) привилегии не нужны:
+# ProtectSystem=strict оставляет /etc и /usr доступными на чтение, AF_INET/AF_INET6 разрешены выше.
+# Ни одной capability: порт > 1024, raw-сокеты и смена владельца файлов не нужны.
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+# Чужие процессы не видны; /proc ограничен каталогами процессов (Node читает только /proc/self).
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+# Фильтр системных вызовов: набор @system-service минус привилегированные вызовы.
+# Риск: если Node не стартует (в журнале «Bad system call», SIGSYS), сначала уберите вторую строку.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+# @resources (setrlimit, prlimit) НЕ запрещаем: Node при старте поднимает RLIMIT_NOFILE через setrlimit,
+# запрет мог бы уронить запуск. Включать только после проверки на сервере:
+#SystemCallFilter=~@resources
+SystemCallErrorNumber=EPERM
+# Лимиты ресурсов. 512M рассчитано на VPS с 1 ГБ RAM и 1 ГБ swap (остальное: Caddy, ОС);
+# при OOM-убийстве поднимите значение. TasksMax ограничивает число потоков и процессов (форк-бомба).
+MemoryMax=512M
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

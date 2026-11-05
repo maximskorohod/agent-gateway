@@ -1,0 +1,53 @@
+// Минимальный скрипт сайта: кнопка «Скопировать» (data-copy), подсветка раздела в шапке
+// и автофокус поля кода. Других задач у скрипта нет; инлайн-скриптов в разметке нет (CSP без unsafe-inline).
+(function () {
+  'use strict';
+
+  function selectText(node) {
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) {
+      // Выделение недоступно — пользователь скопирует вручную.
+    }
+  }
+
+  function copyFrom(button) {
+    const source = document.querySelector(button.getAttribute('data-copy') || '');
+    if (!source) return;
+    const label = button.textContent;
+    const show = (text) => {
+      button.textContent = text;
+      setTimeout(() => { button.textContent = label; }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(source.textContent || '').then(
+        () => show(button.getAttribute('data-copied') || 'Copied'),
+        () => { selectText(source); show(button.getAttribute('data-selected') || 'Press Ctrl+C'); }
+      );
+    } else {
+      selectText(source);
+      show(button.getAttribute('data-selected') || 'Press Ctrl+C');
+    }
+  }
+
+  document.addEventListener('click', (event) => {
+    const button = event.target instanceof Element ? event.target.closest('[data-copy]') : null;
+    if (button) copyFrom(button);
+  });
+
+  // Подсветка текущего раздела в шапке.
+  const section = '/' + (location.pathname.split('/')[1] || 'keys');
+  document.querySelectorAll('.nav a[href]').forEach((a) => {
+    const href = a.getAttribute('href');
+    if (href === section || (section === '/audit' && href === '/settings')) a.setAttribute('aria-current', 'page');
+  });
+
+  const focusTarget = document.querySelector('input[autofocus]');
+  if (focusTarget && document.activeElement === document.body) {
+    focusTarget.focus();
+  }
+})();
