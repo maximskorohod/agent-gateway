@@ -180,17 +180,20 @@ export function th(key, params = {}) {
 /**
  * Каркас страницы. body — Raw (из html`…`); обычная строка экранируется.
  * flash — { type: 'ok'|'error', text }. nav=false убирает ссылки разделов.
+ * list — колонка со списком ключей слева от содержимого; listHome — экран самого списка: заголовок в колонке,
+ * а на телефоне видна только она. pendingCount — счётчик заявок у раздела «Ключи». dim — затемнённый фон окна.
  */
-export function layout(title, body, { flash = null, nav = true, csrf = '' } = {}) {
+export function layout(title, body, { flash = null, nav = true, csrf = '', list = null, listHome = false, pendingCount = 0, dim = false } = {}) {
   const flashBox = flash
     ? html`<div class="flash ${flash.type === 'ok' ? 'ok' : 'error'}" role="${flash.type === 'ok' ? 'status' : 'alert'}">${flash.text}</div>`
     : '';
-  // На телефоне разделы прячутся за кнопкой-бургером: чекбокс + label, работает без JS.
+  const badge = pendingCount > 0
+    ? html`<span class="count" aria-label="${t('keys.pending', { n: pendingCount })}">${pendingCount}</span>`
+    : '';
+  // Компьютер: боковое меню. Телефон: то же меню полосой внизу экрана. Работает без JS.
   const navBox = nav
-    ? html`<input type="checkbox" id="menu-toggle" class="menu-toggle">
-      <label for="menu-toggle" class="menu-btn" aria-label="${t('nav.menu')}" title="${t('nav.menu')}"><span></span></label>
-      <nav class="nav" aria-label="${t('nav.sections')}">
-        <a href="/keys">${t('nav.keys')}</a>
+    ? html`<nav class="nav" aria-label="${t('nav.sections')}">
+        <a href="/keys">${t('nav.keys')}${badge}</a>
         <a href="/agents">${t('nav.agents')}</a>
         <a href="/stats">${t('nav.activity')}</a>
         ${DEMO ? '' : html`<a href="/settings">${t('nav.settings')}</a>
@@ -199,6 +202,18 @@ export function layout(title, body, { flash = null, nav = true, csrf = '' } = {}
     : '';
   // Ссылка на лист ожидания в баннере показывается, только если адрес задан (waitlistLink() пуст без него)
   const demoBanner = DEMO ? html`<div class="demo-banner" role="note">${t('demo.banner')}${waitlistLink()}</div>` : '';
+  const bodyClass = [nav ? '' : 'bare', dim ? 'dim' : ''].filter(Boolean).join(' ');
+  const main = list
+    ? html`<main class="wrap has-list ${listHome ? 'list-home' : 'list-detail'}">
+${flashBox}
+<aside class="list-col">${listHome ? html`<h1>${title}</h1>` : ''}${list}</aside>
+<div class="detail-col">${listHome ? '' : html`<h1>${title}</h1>`}${body}</div>
+</main>`
+    : html`<main class="wrap">
+<h1>${title}</h1>
+${flashBox}
+${body}
+</main>`;
   return html`<!doctype html>
 <html lang="${lang}">
 <head>
@@ -209,14 +224,10 @@ export function layout(title, body, { flash = null, nav = true, csrf = '' } = {}
 <link rel="stylesheet" href="/public/style.css">
 <script src="/public/app.js" defer></script>
 </head>
-<body${nav ? '' : raw(' class="bare"')}>
+<body${bodyClass ? html` class="${bodyClass}"` : ''}>
 ${demoBanner}
 <header class="top"><div class="top-in"><a class="brand" href="/">${BRAND_MARK}${t('app.name')}</a>${navBox}</div></header>
-<main class="wrap">
-<h1>${title}</h1>
-${flashBox}
-${body}
-</main>
+${main}
 <footer class="foot">${waitlistLink()}</footer>
 </body>
 </html>`.value;

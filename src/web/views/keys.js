@@ -140,28 +140,51 @@ function iconRow(provider, caption) {
     </div>`;
 }
 
-function pendingCard(r, providers, csrf, filterLines = {}) {
-  const id = enc(r.id);
-  // имя ключа в скобках только если оно отличается от имени сервиса: «HubSpot (HubSpot)» не нужно
+// имя ключа в скобках только если оно отличается от имени сервиса: «HubSpot (HubSpot)» не нужно
+function requestTarget(r, providers) {
   const svc = providerName(providers, r.provider);
-  const label = r.credential_label && r.credential_label.trim() !== svc ? html` (${r.credential_label})` : '';
+  return r.credential_label && r.credential_label.trim() !== svc ? `${svc} (${r.credential_label})` : svc;
+}
+
+const callsText = (n) => `${n} ${plural(n, [t('unit.call.one'), t('unit.call.few'), t('unit.call.many')])}`;
+
+// Строка заявки в списке: решение принимается на отдельном экране, где видно, что получит агент.
+function pendingRow(r, providers) {
   return html`
-    <li class="card">
-      <p><strong>${r.agent_name}</strong> → ${providerName(providers, r.provider)}${label}</p>
-      <p class="muted small">${fmtDuration(r.ttl)} · ${r.calls} ${plural(r.calls, [t('unit.call.one'), t('unit.call.few'), t('unit.call.many')])}</p>
-      ${r.reason ? html`<p class="reason">${t('keys.agent_reason', { reason: r.reason })}</p>` : ''}
-      ${Object.hasOwn(filterLines, r.id) ? html`<p class="muted small">${filterLines[r.id]}</p>` : ''}
-      <div class="actions">
-        ${form(`/requests/${id}/approve`, html`<button class="btn primary" type="submit">${t('requests.approve')}</button>`, csrf)}
-        ${form(`/requests/${id}/deny`, html`<button class="btn" type="submit">${t('requests.deny')}</button>`, csrf)}
-      </div>
+    <li>
+      <a class="row wait-row" href="/requests/${enc(r.id)}">
+        <span class="grow">
+          <span class="title">${r.agent_name}</span>
+          <span class="muted small">${requestTarget(r, providers)}, ${fmtDuration(r.ttl)}, ${callsText(r.calls)}</span>
+        </span>
+        <span class="pill">${t('keys.review')}</span>
+      </a>
     </li>`;
 }
 
-function keyRow(c, providers) {
+/** Экран заявки: кто просит, срок и вызовы, что увидит агент, слова агента, решение. Решение только POST с CSRF. */
+export function requestPage({ csrf, request: r, providers = [], filterLine: line = null, flash = null } = {}) {
+  const id = enc(r.id);
+  return layout(t('request.title', { agent: r.agent_name, target: requestTarget(r, providers) }), html`
+    <p class="center"><span class="pill">${t('request.waiting')}</span></p>
+    <dl class="facts">
+      <div><dt>${t('request.for')}</dt><dd>${fmtDuration(r.ttl)}</dd></div>
+      <div><dt>${t('request.calls')}</dt><dd>${r.calls}</dd></div>
+    </dl>
+    ${line ? html`<p class="see">${line}</p>` : ''}
+    ${r.reason ? html`<blockquote class="said"><p>${r.reason}</p><footer>${t('request.reason_caption')}</footer></blockquote>` : ''}
+    <div class="two">
+      ${form(`/requests/${id}/deny`, html`<button class="btn" type="submit">${t('requests.deny')}</button>`, csrf)}
+      ${form(`/requests/${id}/approve`, html`<button class="btn primary" type="submit">${t('requests.approve')}</button>`, csrf)}
+    </div>
+    <p class="center small"><a href="/keys">${t('keys.back')}</a></p>
+  `, { nav: false, csrf, flash });
+}
+
+function keyRow(c, providers, currentId = null) {
   return html`
     <li>
-      <a class="row" href="/keys/${enc(c.id)}">
+      <a class="row${c.id === currentId ? ' on' : ''}" href="/keys/${enc(c.id)}"${c.id === currentId ? raw(' aria-current="true"') : ''}>
         <img class="ico" src="/public/icons/${enc(c.provider)}.svg" alt="" width="32" height="32">
         <span class="grow">
           <span class="title">${keyName(c, providers)}</span>
@@ -172,8 +195,43 @@ function keyRow(c, providers) {
     </li>`;
 }
 
-/** Экран 1: заявки «Ожидают», список ключей и кнопка «+». */
-export function keysPage({ csrf, credentials = [], pending = [], providers = [], filterLines = {}, flash = null, onboarding = null, demo = false } = {}) {
+// Колонка списка: заявки сверху, ниже ключи. Общая для экрана ключей и страницы ключа.
+function keysColumn({ credentials = [], pending = [], providers = [], currentId = null }) {
+  return html`
+    <div class="list-actions"><a class="btn" href="/keys/new">${t('keys.add')}</a></div>
+    ${pending.length ? html`<section>
+      <h2 class="cap">${t('keys.pending', { n: pending.length })}</h2>
+      <ul class="list">${pending.map((r) => pendingRow(r, providers))}</ul>
+    </section>` : ''}
+    <section>
+      <h2 class="cap">${t('keys.my_keys')}</h2>
+      ${credentials.length
+        ? html`<ul class="list">${credentials.map((c) => keyRow(c, providers, currentId))}</ul>`
+        : html`<div class="empty"><p>${t('keys.empty')}</p></div>`}
+    </section>`;
+}
+
+// Карточка первого ключа справа от списка: только чтение, правка на странице ключа.
+function keySummary(c, providers, line) {
+  return html`
+    <div class="summary">
+      <div class="head-ico">
+        <img class="ico" src="/public/icons/${enc(c.provider)}.svg" alt="" width="32" height="32">
+        <h2>${keyName(c, providers)}</h2>
+      </div>
+      <dl class="fields">
+        <div><dt>${t('summary.key')}</dt><dd class="mono">············ ${c.last4}</dd></div>
+        <div><dt>${t('summary.approval')}</dt><dd>${modeText(c)}</dd></div>
+        <div><dt>${t('summary.longest')}</dt><dd>${fmtDuration(c.max_ttl)}</dd></div>
+        ${line ? html`<div><dt>${t('summary.access')}</dt><dd>${line}</dd></div>` : ''}
+      </dl>
+      <p class="callout">${t('summary.never_shown')}</p>
+      <p><a class="btn" href="/keys/${enc(c.id)}">${t('summary.open')}</a></p>
+    </div>`;
+}
+
+/** Экран 1: колонка заявок и ключей, справа карточка первого ключа. keyLine — «Агент увидит…» для этого ключа. */
+export function keysPage({ csrf, credentials = [], pending = [], providers = [], keyLine = null, flash = null, onboarding = null, demo = false } = {}) {
   // демо: кнопка «Simulate agent request» создаёт заявку от демо-агента через настоящий requests.submit
   const demoBlock = demo
     ? html`<section class="card" role="note">
@@ -185,29 +243,9 @@ export function keysPage({ csrf, credentials = [], pending = [], providers = [],
   const onboardingBlock = onboarding
     ? html`<section class="card" role="note"><p class="actions"><a class="btn primary" href="/welcome">${t('welcome.title')}</a> <span class="muted">${t('welcome.progress', { n: onboarding.count })}</span></p></section>`
     : '';
-  const pendingBlock = pending.length
-    ? html`<section class="pending">
-        <h2>${t('keys.pending', { n: pending.length })}</h2>
-        <ul class="list">${pending.map((r) => pendingCard(r, providers, csrf, filterLines))}</ul>
-      </section>`
-    : '';
-  return layout(t('keys.title'), html`
-    ${onboardingBlock}
-    ${demoBlock}
-    ${pendingBlock}
-    <section>
-      <div class="head">
-        <h2>${t('keys.my_keys')}</h2>
-        <a class="btn primary" href="/keys/new">+ ${t('keys.add')}</a>
-      </div>
-      ${credentials.length
-        ? html`<ul class="list">${credentials.map((c) => keyRow(c, providers))}</ul>`
-        : html`<div class="empty">
-            <p>${t('keys.empty')}</p>
-            <a class="btn primary" href="/keys/new">${t('keys.add')}</a>
-          </div>`}
-    </section>
-  `, { csrf, flash });
+  const list = html`${onboardingBlock}${demoBlock}${keysColumn({ credentials, pending, providers })}`;
+  const detail = credentials.length ? keySummary(credentials[0], providers, keyLine) : '';
+  return layout(t('keys.title'), detail, { csrf, flash, list, listHome: true, pendingCount: pending.length });
 }
 
 /** Экран 2: сетка сервисов (включая «Другой»). */
@@ -396,7 +434,7 @@ function replaceValues(cred, prov) {
 }
 
 /** Страница ключа: настройки, замена ключа, удаление. Ключ не показывается, только последние 4 символа. */
-export function keyDetail({ csrf, cred, provider, telegramConnected = false, flash = null, preview = null } = {}) {
+export function keyDetail({ csrf, cred, provider, telegramConnected = false, flash = null, preview = null, credentials = null, pending = [], providers = [] } = {}) {
   const id = enc(cred.id);
   const prov = provider ?? { slug: cred.provider, name: cred.provider };
   return layout(keyName(cred, [prov]), html`
@@ -425,5 +463,10 @@ export function keyDetail({ csrf, cred, provider, telegramConnected = false, fla
       </details>
     </section>
     <p><a href="/keys">${t('keys.back')}</a></p>
-  `, { csrf, flash });
+  `, {
+    csrf,
+    flash,
+    pendingCount: pending.length,
+    list: credentials ? keysColumn({ credentials, pending, providers, currentId: cred.id }) : null,
+  });
 }

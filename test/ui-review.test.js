@@ -107,9 +107,43 @@ test('заявка: имя ключа в скобках только если о
   const req = (credential_label) => ({ id: 'r1', agent_name: 'bot', provider: 'hubspot', credential_label, ttl: 3600, calls: 3, reason: '' });
   const page = (label) => V.keysPage({ csrf: 'c', pending: [req(label)], providers: [HUB] });
   assert.doesNotMatch(page('HubSpot'), /HubSpot \(HubSpot\)/);
-  assert.match(page('HubSpot'), /→ HubSpot<\/p>/);
-  assert.match(page('Sales'), /→ HubSpot \(Sales\)<\/p>/);
-  assert.match(page(''), /→ HubSpot<\/p>/);
+  assert.match(page('HubSpot'), /small">HubSpot, /);
+  assert.match(page('Sales'), /small">HubSpot \(Sales\), /);
+  assert.match(page(''), /small">HubSpot, /);
+});
+
+test('экран заявки: строка в списке ведёт на него, решение только POST с CSRF, текст агента экранируется', () => {
+  const r = { id: 'r/1', agent_name: '<b>bot</b>', provider: 'hubspot', credential_label: 'Sales', ttl: 900, calls: 20, reason: '<script>x</script>' };
+  const list = V.keysPage({ csrf: 'c', pending: [r], providers: [HUB] });
+  assert.match(list, /href="\/requests\/r%2F1"/);
+  assert.doesNotMatch(list, /action="\/requests/); // в списке решения нет
+  assert.match(list, /class="count"[^>]*>1</);
+  const page = V.requestPage({ csrf: 'tok', request: r, providers: [HUB], filterLine: 'Agent will see: deals' });
+  assert.match(page, /<form method="post" action="\/requests\/r%2F1\/approve"><input type="hidden" name="_csrf" value="tok">/);
+  assert.match(page, /<form method="post" action="\/requests\/r%2F1\/deny"><input type="hidden" name="_csrf" value="tok">/);
+  assert.match(page, /Agent will see: deals/);
+  assert.match(page, /&lt;script&gt;x&lt;\/script&gt;/);
+  assert.match(page, /&lt;b&gt;bot&lt;\/b&gt; asks for access to HubSpot \(Sales\)/);
+  assert.doesNotMatch(page, /<script>x/);
+  assert.doesNotMatch(page, /class="nav"/); // экран решения без меню
+});
+
+test('список ключей: на странице ключа текущий отмечен, значения ключа нет, есть только последние 4 символа', () => {
+  const page = V.keyDetail({ csrf: 'c', cred: oldKey, provider: HUB, credentials: [oldKey], providers: [HUB] });
+  assert.match(page, /class="row on" href="\/keys\/k1" aria-current="true"/);
+  assert.match(page, /<h1>HubSpot<\/h1>/);
+  const home = V.keysPage({ csrf: 'c', credentials: [oldKey], providers: [HUB], keyLine: 'Agent will see: deals' });
+  assert.match(home, /············ 548f/);
+  assert.match(home, /Agent will see: deals/);
+  assert.match(home, /href="\/keys\/k1">Open key settings/);
+});
+
+test('резервные коды: кнопка «Дальше» ждёт сохранения только через JS, без него форма рабочая', () => {
+  const page = V.setup({ csrf: 'c', step: 2, data: { backupCodes: ['AAAA-BBBB'], downloadHref: '/setup/backup-codes.txt' } });
+  assert.match(page, /<body class="bare dim">/);
+  assert.match(page, /data-after-save/);
+  assert.doesNotMatch(page, /data-after-save[^>]*disabled|disabled[^>]*data-after-save/);
+  assert.match(page, /href="\/setup\/backup-codes.txt" download data-saves-codes/);
 });
 
 test('журнал аудита: названия событий из словаря, неизвестный код как есть, секреты и null не выводятся', () => {

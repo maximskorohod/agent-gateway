@@ -97,7 +97,7 @@ test('каждая страница рендерится с минимальны
 });
 
 test('причина от агента экранируется', () => {
-  const out = V.keysPage({ csrf, credentials: [], pending: [pendingReq], providers });
+  const out = V.requestPage({ csrf, request: pendingReq, providers });
   assert.ok(out.includes('&lt;b&gt;x&lt;/b&gt;'));
   assert.ok(!out.includes('<b>x</b>'));
 });

@@ -79,7 +79,8 @@ test('агент, заявка, одобрение на сайте, получе
   agentToken = (await r.text()).match(/gwa_[A-Za-z0-9_-]+/)[0];
   let a = await api('/v1/grants', { method: 'POST', headers: { authorization: `Bearer ${agentToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ provider: 'telegram', ttl: 600, calls: 2, reason: '<b>лиды</b> https://evil' }) });
   assert.equal(a.status, 202); requestId = (await a.json()).request_id;
-  const page = await (await get('/')).text(); assert.match(page, /Ожидают/); assert.match(page, /&lt;b&gt;лиды/);
+  const page = await (await get('/')).text(); assert.match(page, /Ожидают/); assert.ok(page.includes(`/requests/${requestId}`));
+  const screen = await (await get(`/requests/${requestId}`)).text(); assert.match(screen, /&lt;b&gt;лиды/); assert.ok(!screen.includes('<b>лиды'));
   const d = await post(`/requests/${requestId}/approve`, {}); assert.equal(d.status, 302);
   a = await api(`/v1/grants/${requestId}`, { headers: { authorization: `Bearer ${agentToken}` } }); assert.equal(a.status, 200);
   const j = await a.json(); assert.equal(j.status, 'approved'); assert.match(j.token, /^gwt_/); grantToken = j.token; assert.equal(j.max_calls, 2);

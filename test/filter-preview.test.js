@@ -16,7 +16,7 @@ import { initI18n, t } from '../src/i18n.js';
 import { filterLine, describeFilter, previewRoute, fieldNames } from '../src/core/filter.js';
 import { createNotifier } from '../src/notify.js';
 import { buildText } from '../src/tg/bot.js';
-import { keysPage, keyForm } from '../src/web/views/keys.js';
+import { requestPage, keyForm } from '../src/web/views/keys.js';
 
 initI18n('en');
 
@@ -206,10 +206,11 @@ test('сайт: у ожидающей заявки видна строка фи�
   const agent = mkAgent([id]);
   const r = await grantReq(agent, {});
   assert.equal(r.status, 202);
-  const page = await (await get('/')).text();
+  const { request_id } = await r.json();
+  const page = await (await get(`/requests/${request_id}`)).text();
   assert.match(page, /Agent will see: Deals \(ID, Title\); personal data hidden/);
   // шаблон экранирует любую строку
-  const html = keysPage({ csrf: 'x', credentials: [], pending: [{ id: 'q1', agent_name: 'a', provider: 'bitrix24', credential_label: 'c', ttl: 600, calls: 1, reason: '' }], providers: [], filterLines: { q1: '<script>alert(1)</script>' } }).toString();
+  const html = requestPage({ csrf: 'x', request: { id: 'q1', agent_name: 'a', provider: 'bitrix24', credential_label: 'c', ttl: 600, calls: 1, reason: '' }, providers: [], filterLine: '<script>alert(1)</script>' }).toString();
   assert.ok(!html.includes('<script>alert') && html.includes('&lt;script&gt;'));
 });
 

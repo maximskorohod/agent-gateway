@@ -294,10 +294,10 @@ export async function registerWeb(fastify, ctx) {
     const ob = onboardingState(repo);
     repo.expireRequests();
     const pendingList = repo.listPending();
-    // «Агент увидит: …» по каждой заявке (п. 7.3); ключ мог исчезнуть между запросами — тогда строки нет
-    const filterLines = {};
-    for (const r of pendingList) { const c = repo.getCredential(r.credential_id); if (c) filterLines[r.id] = filterLine(c.filter, catalog.get(c.provider)); }
-    return html(reply, V.keysPage({ csrf: req.csrf, onboarding: needsWelcome(ob) ? ob : null, credentials: repo.listCredentials(), pending: pendingList, providers: catalog.list(), filterLines, flash: takeFlash(req), demo: !!config.demo }));
+    const credentials = repo.listCredentials();
+    // «Агент увидит: …» для ключа в карточке справа
+    const keyLine = credentials[0] ? filterLine(credentials[0].filter, catalog.get(credentials[0].provider)) : null;
+    return html(reply, V.keysPage({ csrf: req.csrf, onboarding: needsWelcome(ob) ? ob : null, credentials, pending: pendingList, providers: catalog.list(), keyLine, flash: takeFlash(req), demo: !!config.demo }));
   });
 
   // ---- демо: «Simulate agent request» создаёт заявку демо-агента через настоящий requests.submit (лимит 6/мин на IP стоит в demoRouteGuard)
@@ -377,7 +377,8 @@ export async function registerWeb(fastify, ctx) {
   fastify.get('/keys/:id', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
     const cred = repo.getCredential(req.params.id); if (!cred) return html(reply, V.errorPage(404, t('error.key_not_found'), { nav: true, csrf: req.csrf }), 404);
-    return html(reply, V.keyDetail({ csrf: req.csrf, cred, provider: catalog.get(cred.provider), telegramConnected: telegramConnected(), flash: takeFlash(req) }));
+    repo.expireRequests();
+    return html(reply, V.keyDetail({ csrf: req.csrf, cred, provider: catalog.get(cred.provider), telegramConnected: telegramConnected(), flash: takeFlash(req), credentials: repo.listCredentials(), pending: repo.listPending(), providers: catalog.list() }));
   });
   fastify.post('/keys/:id/policy', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
@@ -439,6 +440,15 @@ export async function registerWeb(fastify, ctx) {
     flash(req, res.ok ? 'ok' : 'error', res.ok ? (approve ? t('flash.access_approved') : t('flash.request_denied')) : t('flash.request_inactive'));
     return reply.redirect('/');
   }
+  // Экран заявки: GET только показывает, решение принимают POST ниже. Строку берём из listPending: там имя агента и подпись ключа
+  fastify.get('/requests/:id', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    repo.expireRequests();
+    const r = repo.listPending().find((x) => x.id === req.params.id);
+    if (!r) { flash(req, 'error', t('flash.request_inactive')); return reply.redirect('/'); }
+    const c = repo.getCredential(r.credential_id);
+    return html(reply, V.requestPage({ csrf: req.csrf, request: r, providers: catalog.list(), filterLine: c ? filterLine(c.filter, catalog.get(c.provider)) : null, flash: takeFlash(req) }));
+  });
   fastify.post('/requests/:id/approve', (req, reply) => decideWeb(req, reply, true));
   fastify.post('/requests/:id/deny', (req, reply) => decideWeb(req, reply, false));
   // GET только показывает форму кода, решение — POST с CSRF (П-6)

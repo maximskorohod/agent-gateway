@@ -194,6 +194,7 @@ export function demoRouteGuard(fastify, { repo, reset = null }) {
     [['POST'], /^\/keys\/new\/demo$/, (m, req) => (created('keys', visitor(req)) < MAX_KEYS - 1 && repo.listCredentials().length < TOTAL_KEYS && limiters.create.take('demo:create') ? true : 'limit')],
     [['POST'], /^\/agents$/, (m, req) => (created('agents', visitor(req)) < MAX_AGENTS - 1 && repo.listAgents().length < TOTAL_AGENTS && limiters.create.take('demo:create') ? true : 'limit')],
     [['POST'], /^\/agents\/([^/]+)\/keys$/, (m) => { const id = dec(m[1]); return id !== null && !!repo.getAgent(id); }],
+    [GET, /^\/requests\/([^/]+)$/], // экран заявки: только показ, решение ниже
     [['POST'], /^\/requests\/([^/]+)\/(approve|deny)$/],
     [['POST'], /^\/demo\/simulate$/],
     [['POST'], /^\/v1\/grants$/],

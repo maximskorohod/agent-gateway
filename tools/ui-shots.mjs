@@ -181,7 +181,8 @@ async function runLang(lang, port, cdpPort) {
     }
     const home = (await web('GET', '/')).text;
     const ids = [...new Set([...home.matchAll(/href="\/keys\/([A-Za-z0-9_-]{6,})"/g)].map((m) => m[1]))];
-    const credOf = async (slug) => { for (const id of ids) if ((await web('GET', `/keys/${id}`)).text.includes(`/keys/new/${slug}`) || (await web('GET', `/keys/${id}`)).text.includes(`icons/${slug}`)) return id; return ids[0]; };
+    // строка списка: ссылка на ключ и сразу значок сервиса (на странице ключа теперь есть значки всех ключей)
+    const credOf = async (slug) => home.match(new RegExp(`href="/keys/([A-Za-z0-9_-]{6,})"[^>]*>\\s*<img class="ico" src="/public/icons/${slug}\\.svg"`))?.[1] ?? ids[0];
     const hub = await credOf('hubspot'); const btx = await credOf('bitrix24');
     await shot('10-key-hubspot-filter', `/keys/${hub}`);
     await shot('11-key-bitrix24-filter', `/keys/${btx}`);
@@ -191,6 +192,7 @@ async function runLang(lang, port, cdpPort) {
     const nameField = Object.keys(af).find((k) => /name/.test(k)) || 'name';
     const created = await post('/agents', { ...af, [nameField]: 'research-bot' }, '/agents');
     const token = created.text.match(/gwa_[A-Za-z0-9_-]+/)?.[0];
+    if (!token) console.log(`no agent token: POST /agents -> ${created.status} ${created.location ?? ''}`);
     await shot('12-agents', '/agents');
     await shotSubmit('13-agent-created', '/agents', '^\\/agents$', `f.elements['${nameField}'].value = 'demo-' + Math.random().toString(36).slice(2, 7)`);
     let reqId;
@@ -199,7 +201,7 @@ async function runLang(lang, port, cdpPort) {
       reqId = g.request_id;
     }
     await shot('14-home-with-request', '/');
-    if (reqId) { await shot('15-request-approve-confirm', `/requests/${reqId}/approve-confirm`); await shot('16-requests', '/requests'); }
+    if (reqId) { await shot('15-request', `/requests/${reqId}`); await shot('15-request-approve-confirm', `/requests/${reqId}/approve-confirm`); await shot('16-requests', '/requests'); }
     await shot('17-settings', '/settings');
     await shot('18-audit', '/audit');
     await shot('19-stats', '/stats');

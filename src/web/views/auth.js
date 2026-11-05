@@ -53,10 +53,15 @@ function stepOne(csrf) {
 function stepTwo(csrf, d) {
   if (Array.isArray(d.backupCodes) && d.backupCodes.length) {
     return html`
-      <p>${t('setup.backup_intro')}</p>
-      <pre class="codes">${d.backupCodes.join('\n')}</pre>
-      <p class="actions"><a class="btn" href="${d.downloadHref || '#'}" download>${t('setup.download')}</a></p>
-      ${form('', html`<input type="hidden" name="step" value="3"><button class="btn primary" type="submit">${t('setup.next')}</button>`, csrf)}
+      <div class="codes-box">
+        <pre class="codes" id="backup-codes">${d.backupCodes.join('\n')}</pre>
+        <p class="actions">
+          <a class="btn primary" href="${d.downloadHref || '#'}" download data-saves-codes>${t('setup.download')}</a>
+          <button class="btn" type="button" data-copy="#backup-codes" data-saves-codes data-copied="${t('agents.copied')}" data-selected="${t('agents.copied')}">${t('agents.copy')}</button>
+        </p>
+      </div>
+      <p class="callout">${t('setup.codes_note')}</p>
+      ${form('', html`<input type="hidden" name="step" value="3"><button class="btn wide" type="submit" data-after-save>${t('setup.saved_next')}</button>`, csrf)}
     `;
   }
   return html`
@@ -107,9 +112,10 @@ export function setup({ csrf, step = 1, data, error, flash = null } = {}) {
   const d = data || {};
   const n = Number(step) || 1;
   const content = n === 1 ? stepOne(csrf) : n === 2 ? stepTwo(csrf, d) : stepThree(csrf, d);
-  return layout(t('setup.title'), html`
-    <p class="muted">${t('setup.step', { n })}</p>
+  const codesStep = n === 2 && Array.isArray(d.backupCodes) && d.backupCodes.length > 0;
+  return layout(codesStep ? t('setup.codes_title') : t('setup.title'), html`
+    <p class="muted center">${t('setup.step', { n })}</p>
     ${error ? html`<p class="error" role="alert">${error}</p>` : ''}
     ${content}
-  `, { nav: false, csrf, flash });
+  `, { nav: false, csrf, flash, dim: codesStep });
 }

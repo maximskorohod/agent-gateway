@@ -34,9 +34,18 @@
     }
   }
 
+  // Резервные коды: «Дальше» доступна после скачивания или копирования. Без JS кнопка просто активна.
+  const afterSave = document.querySelector('[data-after-save]');
+  if (afterSave) afterSave.disabled = true;
+
   document.addEventListener('click', (event) => {
-    const button = event.target instanceof Element ? event.target.closest('[data-copy]') : null;
+    const target = event.target instanceof Element ? event.target : null;
+    const button = target ? target.closest('[data-copy]') : null;
     if (button) copyFrom(button);
+    if (afterSave && target && target.closest('[data-saves-codes]')) {
+      afterSave.disabled = false;
+      afterSave.classList.add('primary');
+    }
   });
 
   // Подсветка текущего раздела в шапке.
