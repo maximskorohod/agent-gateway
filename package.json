@@ -1,11 +1,11 @@
 {
-  "name": "agent-gateway",
+  "name": "agentkeygate",
   "version": "1.0.0",
   "private": true,
   "description": "Self-hosted gateway that gives AI agents temporary, owner-approved access to APIs without ever seeing the keys",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "git+https://github.com/maximskorohod/agent-gateway.git" },
-  "bugs": { "url": "https://github.com/maximskorohod/agent-gateway/issues" },
+  "repository": { "type": "git", "url": "git+https://github.com/maximskorohod/agentkeygate.git" },
+  "bugs": { "url": "https://github.com/maximskorohod/agentkeygate/issues" },
   "type": "module",
   "engines": {
     "node": ">=22"

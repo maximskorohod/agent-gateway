@@ -1,4 +1,4 @@
-# agent-gateway with Caddy for TLS. The gateway port is not published: only Caddy is reachable.
+# AgentKeyGate with Caddy for TLS. The gateway port is not published: only Caddy is reachable.
 #
 #   cp .env.example .env        # then edit DOMAIN and GW_PUBLIC_URL
 #   docker compose up -d
@@ -7,7 +7,7 @@
 services:
   gateway:
     build: .
-    image: agent-gateway:local
+    image: agentkeygate:local
     init: true
     env_file: .env
     environment:

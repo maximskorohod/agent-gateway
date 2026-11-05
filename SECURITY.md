@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Report privately through GitHub: the repository's **Security** tab → **Report a vulnerability** (https://github.com/maximskorohod/agent-gateway/security/advisories/new). Please do not open a public issue.
+Report privately through GitHub: the repository's **Security** tab → **Report a vulnerability** (https://github.com/maximskorohod/agentkeygate/security/advisories/new). Please do not open a public issue.
 
 Please include a description of the problem, steps to reproduce, the affected version or commit, and the impact as you understand it.
 

@@ -508,7 +508,7 @@ Argument errors are an `Error` with `exitCode: 2`. The audit archive is JSON Lin
 A thin wrapper over `cli.js`. `start` starts the gateway; `init` prints the one-time wizard link and resets sessions, passes, 2FA and password (keys and agents stay); `restore <file>` copies the backup, rotates sys/signing, runs `resetPendingStates()` (passes, sessions, links, pending requests, temporary 2FA secrets, TOTP steps) and checks credentials against the vault; `audit rotate [--days 90] [--out <dir>]`; `key list`.
 
 ## scripts/backup.sh
-Backups are encrypted only: age (`backup.age.pub`) or gpg (`backup.pass`); with neither, it exits with code 1 and no plain copy is left (trap). SSM vault: the file `gw-DATE.db.age|gpg`. File vault (`GW_VAULT=file` in `/etc/agent-gateway/env`): `gw-DATE.tar.age|gpg` containing `gw.db`, `vault.json` and `master.key`. The master key is in the same encrypted archive: a vault cannot be restored without it, and a separately stored key is the first thing lost in a disaster; all protection rests on encrypting the archive. The restore procedure is in `docs/DEPLOY.md`, section 5.
+Backups are encrypted only: age (`backup.age.pub`) or gpg (`backup.pass`); with neither, it exits with code 1 and no plain copy is left (trap). SSM vault: the file `gw-DATE.db.age|gpg`. File vault (`GW_VAULT=file` in `/etc/agentkeygate/env`): `gw-DATE.tar.age|gpg` containing `gw.db`, `vault.json` and `master.key`. The master key is in the same encrypted archive: a vault cannot be restored without it, and a separately stored key is the first thing lost in a disaster; all protection rests on encrypting the archive. The restore procedure is in `docs/DEPLOY.md`, section 5.
 
 ---
 

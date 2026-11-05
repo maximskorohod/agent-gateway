@@ -1,6 +1,6 @@
 // Словарь интерфейса: русский. Набор ключей совпадает с en.js — это проверяет test/i18n.test.js.
 export default {
-  'app.name': 'Agent Gateway',
+  'app.name': 'AgentKeyGate',
 
   'nav.sections': 'Разделы',
   'nav.keys': 'Ключи',

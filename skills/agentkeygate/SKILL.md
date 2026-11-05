@@ -1,9 +1,9 @@
 ---
-name: agent-gateway
-description: Request temporary, owner-approved access to third-party APIs through an agent-gateway instance and call them without ever seeing the keys. Use when a task needs an external API (CRM, email, payments, LLM providers) and the user runs agent-gateway.
+name: agentkeygate
+description: Request temporary, owner-approved access to third-party APIs through an AgentKeyGate instance and call them without ever seeing the keys. Use when a task needs an external API (CRM, email, payments, LLM providers) and the user runs AgentKeyGate.
 ---
 
-# agent-gateway
+# AgentKeyGate
 
 Use this skill to get short-lived access to a third-party API that the owner approves. You never receive the API key. You receive a pass that works for a limited time and a limited number of calls. The owner approves each request, or a standing policy approves it.
 
@@ -11,8 +11,8 @@ Use this skill to get short-lived access to a third-party API that the owner app
 
 Two environment variables must be set:
 
-- `AGENT_GATEWAY_URL`: base URL of the gateway, for example `https://gw.example.com`. No trailing slash.
-- `AGENT_GATEWAY_TOKEN`: your agent token, which starts with `gwa_`. The owner creates it in the web UI under Agents. It is shown once.
+- `AGENTKEYGATE_URL`: base URL of the gateway, for example `https://gw.example.com`. No trailing slash.
+- `AGENTKEYGATE_TOKEN`: your agent token, which starts with `gwa_`. The owner creates it in the web UI under Agents. It is shown once.
 
 If a token is missing, ask the user for it. Do not search the filesystem or the environment for API keys.
 
@@ -23,8 +23,8 @@ The helper script `scripts/gw.sh` in this skill directory needs `curl` and `jq`.
 Send a `POST` to `/v1/grants`. The body has `provider` (the service name, such as `gemini`), `ttl` (seconds, 300 to 86400), `calls` (a number), and `reason` (why you need it, up to 200 characters).
 
 ```bash
-curl -sS -X POST "$AGENT_GATEWAY_URL/v1/grants" \
-  -H "Authorization: Bearer $AGENT_GATEWAY_TOKEN" \
+curl -sS -X POST "$AGENTKEYGATE_URL/v1/grants" \
+  -H "Authorization: Bearer $AGENTKEYGATE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"provider":"gemini","ttl":600,"calls":20,"reason":"Summarize 14 support tickets from today"}'
 ```
@@ -43,8 +43,8 @@ Handle the response:
 Poll only when the response was `202`. Poll no more often than every 5 seconds, which is the `poll_after` value. Stop after 10 minutes.
 
 ```bash
-curl -sS "$AGENT_GATEWAY_URL/v1/grants/$REQUEST_ID" \
-  -H "Authorization: Bearer $AGENT_GATEWAY_TOKEN"
+curl -sS "$AGENTKEYGATE_URL/v1/grants/$REQUEST_ID" \
+  -H "Authorization: Bearer $AGENTKEYGATE_TOKEN"
 ```
 
 - `202`: still pending. Keep polling.
@@ -58,7 +58,7 @@ curl -sS "$AGENT_GATEWAY_URL/v1/grants/$REQUEST_ID" \
 Send the request to `/v1/proxy/<service>/<path>` with the pass as the bearer token. The path is forwarded to the service as is.
 
 ```bash
-curl -sS -X POST "$AGENT_GATEWAY_URL/v1/proxy/gemini/v1beta/models/gemini-2.0-flash:generateContent" \
+curl -sS -X POST "$AGENTKEYGATE_URL/v1/proxy/gemini/v1beta/models/gemini-2.0-flash:generateContent" \
   -H "Authorization: Bearer $GRANT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"contents":[{"parts":[{"text":"Hello"}]}]}'
@@ -91,7 +91,7 @@ An approved answer (`200` from step 1 or step 2) can carry a `filter` object tha
 
 ## Helper script
 
-`scripts/gw.sh` wraps the steps above and keeps the pass in `${XDG_RUNTIME_DIR:-$HOME/.cache}/agent-gateway/<service>.token` (directory mode 700, file mode 600). The token is sent to curl through a config file, not on the command line.
+`scripts/gw.sh` wraps the steps above and keeps the pass in `${XDG_RUNTIME_DIR:-$HOME/.cache}/agentkeygate/<service>.token` (directory mode 700, file mode 600). The token is sent to curl through a config file, not on the command line.
 
 ```bash
 scripts/gw.sh request gemini 600 20 "Summarize 14 support tickets from today"

@@ -1,6 +1,6 @@
 > Russian version: [docs/ru/DEPLOY.md](ru/DEPLOY.md)
 
-# Deploying agent-gateway
+# Deploying AgentKeyGate
 
 Target server: Debian 12 or Ubuntu 24.04, Amazon EC2 t3.micro (1 GB RAM, `setup.sh` creates 1 GB of swap).
 
@@ -68,15 +68,15 @@ curl -s -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/met
 On the server, as root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/maximskorohod/agent-gateway/main/scripts/setup.sh -o /root/setup.sh
+curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/main/scripts/setup.sh -o /root/setup.sh
 sudo bash /root/setup.sh --domain gw.example.com --vault ssm --region eu-central-1
 ```
 
 What the script does, step by step:
 1. installs system packages, creates 1 GB of swap, installs Node.js 22 (NodeSource) and Caddy;
 2. creates a system user `gateway` without a shell;
-3. clones the repository to `/opt/agent-gateway/app` (the code is owned by root, `gateway` cannot write to it) and builds dependencies as an unprivileged user (`npm ci --ignore-scripts`, then `npm rebuild argon2 better-sqlite3`);
-4. creates `/var/lib/agent-gateway` (data) and `/etc/agent-gateway/env` (`GW_*` variables, mode 0600);
+3. clones the repository to `/opt/agentkeygate/app` (the code is owned by root, `gateway` cannot write to it) and builds dependencies as an unprivileged user (`npm ci --ignore-scripts`, then `npm rebuild argon2 better-sqlite3`);
+4. creates `/var/lib/agentkeygate` (data) and `/etc/agentkeygate/env` (`GW_*` variables, mode 0600);
 5. installs the hardened systemd unit `gateway.service`, a Caddy config with your domain, nftables rules, and a backup cron job;
 6. starts the services, waits for `/healthz`, and calls `gateway init`.
 
@@ -102,7 +102,7 @@ Running `setup.sh` again is safe: it updates the code and configs and restarts t
 3. Compare `sha256sum /etc/caddy/cloudflare-origin-pull-ca.pem` with the `CF_CA_SHA256` constant at the top of `setup.sh` (`c14fed0c…b843`, CA valid until 2029-11-01; checked on 2026-11-04 with two downloads from different machines).
 4. Run `setup.sh --behind-cloudflare ...`. The script refuses to continue if the fingerprint does not match. If Cloudflare issued a new CA, pass its fingerprint with the `--cf-ca-sha256 <fingerprint>` flag after the same check.
 
-**Without Cloudflare** (DNS only, the default) IP spoofing is checked like this: send a request with forged `X-Forwarded-For`, `X-Real-IP`, and `CF-Connecting-IP` headers and a wrong password, then the login log (`sqlite3 -readonly /var/lib/agent-gateway/gw.db "SELECT target FROM audit WHERE action='login.fail' ORDER BY rowid DESC LIMIT 1"`) must show the real client address. Caddy without `trusted_proxies` replaces the header with its own client address, and the gateway trusts only loopback. Verified on staging on Nov 4; HTTPS to the bare server IP does not answer there (the certificate is issued for the domain only).
+**Without Cloudflare** (DNS only, the default) IP spoofing is checked like this: send a request with forged `X-Forwarded-For`, `X-Real-IP`, and `CF-Connecting-IP` headers and a wrong password, then the login log (`sqlite3 -readonly /var/lib/agentkeygate/gw.db "SELECT target FROM audit WHERE action='login.fail' ORDER BY rowid DESC LIMIT 1"`) must show the real client address. Caddy without `trusted_proxies` replaces the header with its own client address, and the gateway trusts only loopback. Verified on staging on Nov 4; HTTPS to the bare server IP does not answer there (the certificate is issued for the domain only).
 
 Order matters: first Global AOP in the dashboard and the proxy on the record, then `setup.sh --behind-cloudflare`. If Global AOP is off, Caddy drops the connection after the handshake, and Cloudflare shows error **520** (verified on staging on Nov 5). After switching, check the state of the toggle by reloading the page.
 
@@ -125,7 +125,7 @@ sudo journalctl -u gateway -n 20 --no-pager | grep 203.0.113.7 || echo "forged a
 
 Expected: checks 1 and 2 end with a connection error (code 000) or a refusal, check 3 answers, and the forged address is not in the log. If checks 1 and 2 returned 200, AOP is not working: make sure the `#cf` lines in `/etc/caddy/Caddyfile` are uncommented (`grep client_auth /etc/caddy/Caddyfile`).
 
-**Private repository**: create a bare repository on the server (`git init --bare /srv/agent-gateway.git`), push the branch with `git push <ssh-host>:/srv/agent-gateway.git main`, and pass `--repo /srv/agent-gateway.git`. A GitHub token is not needed on the server. You can get `setup.sh` itself from the same repository: `git --git-dir=/srv/agent-gateway.git show main:scripts/setup.sh > /root/setup.sh` (verified on staging). If you clone the bare repository by hand, specify the branch (`git clone --branch main …`): `HEAD` of a new bare repository points to a branch that does not exist, and the clone comes out empty.
+**Private repository**: create a bare repository on the server (`git init --bare /srv/agentkeygate.git`), push the branch with `git push <ssh-host>:/srv/agentkeygate.git main`, and pass `--repo /srv/agentkeygate.git`. A GitHub token is not needed on the server. You can get `setup.sh` itself from the same repository: `git --git-dir=/srv/agentkeygate.git show main:scripts/setup.sh > /root/setup.sh` (verified on staging). If you clone the bare repository by hand, specify the branch (`git clone --branch main …`): `HEAD` of a new bare repository points to a branch that does not exist, and the clone comes out empty.
 
 ## 3. Updating
 
@@ -133,24 +133,24 @@ Run `setup.sh` again with the same arguments: it updates the code, builds depend
 
 ## 4. Reopen the wizard (`gateway init`)
 
-`init` resets the password, 2FA, sessions, and passes. Keys and agents stay. The command (as root, variables are taken from `/etc/agent-gateway/env`):
+`init` resets the password, 2FA, sessions, and passes. Keys and agents stay. The command (as root, variables are taken from `/etc/agentkeygate/env`):
 
 ```bash
-sudo bash -c 'set -a; . /etc/agent-gateway/env; set +a; runuser -u gateway -- env -C /opt/agent-gateway/app -i PATH=/usr/bin:/bin $(env | grep "^GW_") /usr/bin/node bin/gateway.js init'
+sudo bash -c 'set -a; . /etc/agentkeygate/env; set +a; runuser -u gateway -- env -C /opt/agentkeygate/app -i PATH=/usr/bin:/bin $(env | grep "^GW_") /usr/bin/node bin/gateway.js init'
 ```
 
 ## 5. Backups and restore
 
-A backup runs every night at 03:17 (`/etc/cron.d/agent-gateway`, script `scripts/backup.sh`). Copies are stored in `/var/backups/agent-gateway/`, and those older than 30 days are deleted.
+A backup runs every night at 03:17 (`/etc/cron.d/agentkeygate`, script `scripts/backup.sh`). Copies are stored in `/var/backups/agentkeygate/`, and those older than 30 days are deleted.
 
 Encryption:
-- **age** (preferred): `sudo apt install age`, put the recipient's public key in `/etc/agent-gateway/backup.age.pub`. Keep the private key off the server.
-- **gpg** (if age is not available): put the passphrase in `/etc/agent-gateway/backup.pass` (0600, root). The passphrase is stored on the same server, so the copy only protects against a leak of the backup files themselves.
+- **age** (preferred): `sudo apt install age`, put the recipient's public key in `/etc/agentkeygate/backup.age.pub`. Keep the private key off the server.
+- **gpg** (if age is not available): put the passphrase in `/etc/agentkeygate/backup.pass` (0600, root). The passphrase is stored on the same server, so the copy only protects against a leak of the backup files themselves.
 - Encryption is mandatory. If there is neither age with a key nor gpg with a passphrase, the script prints an error, exits with code 1, and saves nothing (no plaintext copies are ever left on disk).
 - File vault (`GW_VAULT=file`): the copy includes `vault.json` and `master.key`, and the file is named `gw-DATE.tar.age|gpg` (inside: `gw.db`, `vault.json`, `master.key`). The master key is in the same encrypted archive, so only the encryption protects it: keep the age private key off the server. For the ssm vault the copy contains only the database.
-- Audit rotation (older than 90 days, as an archive, gateway stopped): `gateway audit rotate --days 90 --out /var/backups/agent-gateway/audit`. The audit log is append-only, so there is no scheduled cleanup with DELETE.
+- Audit rotation (older than 90 days, as an archive, gateway stopped): `gateway audit rotate --days 90 --out /var/backups/agentkeygate/audit`. The audit log is append-only, so there is no scheduled cleanup with DELETE.
 
-Upload to S3 (optional): in `/etc/agent-gateway/backup.env` set `S3_BUCKET=...` and, if you want, `S3_PREFIX=...`. This needs the `aws` CLI and the IAM permission `s3:PutObject` for the instance role. The retention period in S3 is set by the bucket lifecycle rule (30 days).
+Upload to S3 (optional): in `/etc/agentkeygate/backup.env` set `S3_BUCKET=...` and, if you want, `S3_PREFIX=...`. This needs the `aws` CLI and the IAM permission `s3:PutObject` for the instance role. The retention period in S3 is set by the bucket lifecycle rule (30 days).
 
 Restore:
 
@@ -158,23 +158,23 @@ Restore:
 # 1. Decrypt the copy (on your machine or on the server):
 age -d -i ~/backup.key -o gw.db gw-2026-11-01.db.age
 #    or for gpg:
-gpg --batch --pinentry-mode loopback --passphrase-file /etc/agent-gateway/backup.pass -d -o gw.db gw-2026-11-01.db.gpg
+gpg --batch --pinentry-mode loopback --passphrase-file /etc/agentkeygate/backup.pass -d -o gw.db gw-2026-11-01.db.gpg
 
 #    for the file vault, the archive gw-DATE.tar.age|gpg: decrypt it the same way, then unpack:
 #    tar -xf gw.tar  # gw.db, vault.json, master.key
 # 2. Stop the gateway. For the file vault, first put the vault back in the data directory:
 sudo systemctl stop gateway
-#    sudo install -o gateway -g gateway -m 0600 vault.json master.key /var/lib/agent-gateway/   (one file at a time, not in a batch, if the names differ)
+#    sudo install -o gateway -g gateway -m 0600 vault.json master.key /var/lib/agentkeygate/   (one file at a time, not in a batch, if the names differ)
 #    and put gw.db where gateway can read it:
-sudo install -o gateway -g gateway -m 0600 gw.db /var/lib/agent-gateway/restore.db
+sudo install -o gateway -g gateway -m 0600 gw.db /var/lib/agentkeygate/restore.db
 rm -f gw.db
 
 # 3. Restore (the pass signing key is rotated, all passes are revoked, sessions, one-time links, pending requests
 #    and temporary 2FA secrets are reset):
-sudo bash -c 'set -a; . /etc/agent-gateway/env; set +a; runuser -u gateway -- env -C /opt/agent-gateway/app -i PATH=/usr/bin:/bin $(env | grep "^GW_") /usr/bin/node bin/gateway.js restore /var/lib/agent-gateway/restore.db'
+sudo bash -c 'set -a; . /etc/agentkeygate/env; set +a; runuser -u gateway -- env -C /opt/agentkeygate/app -i PATH=/usr/bin:/bin $(env | grep "^GW_") /usr/bin/node bin/gateway.js restore /var/lib/agentkeygate/restore.db'
 
 # 4. Start and delete the temporary file:
-sudo rm -f /var/lib/agent-gateway/restore.db
+sudo rm -f /var/lib/agentkeygate/restore.db
 sudo systemctl start gateway
 ```
 
@@ -191,7 +191,7 @@ journalctl -u gateway -f                        # gateway logs
 journalctl -u caddy -f                          # Caddy logs (TLS and proxy errors)
 tail -f /var/log/caddy/access.log               # access log without query strings and headers
 sudo nft list ruleset | less                    # current firewall
-sudo tail -n 50 /var/log/agent-gateway-backup.log
+sudo tail -n 50 /var/log/agentkeygate-backup.log
 ```
 
 Firewall block logs (`agw-ssrf-…`, `agw-out-drop`, `agw-in-drop`) go to the kernel log: `journalctl -k | grep agw-`.
@@ -217,7 +217,7 @@ Verified on staging on Nov 4 (Docker 29, Compose 2.40): `docker compose build` a
 
 ## 8. Environment variables
 
-On a VPS `setup.sh` writes them to `/etc/agent-gateway/env`; in Docker they come from `.env`.
+On a VPS `setup.sh` writes them to `/etc/agentkeygate/env`; in Docker they come from `.env`.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -253,11 +253,11 @@ Demo mode (`GW_DEMO=1`) is for a public showcase instance: it has no real keys a
 2. **Process.** A network guard inside Node blocks outgoing TCP connections and DNS, and calls go to a built-in mock. The guard does not intercept UDP (`dgram`) and child processes.
 3. **Server.** An OS-level restriction that works even if the code has a bug: systemd and nftables, as below.
 
-Demo variables (in `/etc/agent-gateway/env` of a separate instance):
+Demo variables (in `/etc/agentkeygate/env` of a separate instance):
 
 ```
 GW_DEMO=1
-GW_DATA_DIR=/var/lib/agent-gateway-demo
+GW_DATA_DIR=/var/lib/agentkeygate-demo
 GW_VAULT=file
 GW_PUBLIC_URL=https://demo.example.com
 GW_PROD_HOSTS=gw.example.com

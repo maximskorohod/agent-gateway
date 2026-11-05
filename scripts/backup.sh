@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Daily backup of the agent-gateway database (P-35: encrypted only).
+# Daily backup of the AgentKeyGate database (P-35: encrypted only).
 # Run by cron as root (deploy/backup.cron, 03:17). Steps:
-#   1) check that there is a way to encrypt: age with /etc/agent-gateway/backup.age.pub or gpg with
-#      /etc/agent-gateway/backup.pass. If neither is available, no backup is made: error and exit code 1.
+#   1) check that there is a way to encrypt: age with /etc/agentkeygate/backup.age.pub or gpg with
+#      /etc/agentkeygate/backup.pass. If neither is available, no backup is made: error and exit code 1.
 #      A plaintext copy never stays on disk, whatever the outcome (the trap removes all intermediate files);
 #   2) SQLite snapshot with the .backup command (consistent even while the gateway runs, WAL);
-#   3) if the gateway uses the file vault (GW_VAULT=file in /etc/agent-gateway/env), vault.json and
+#   3) if the gateway uses the file vault (GW_VAULT=file in /etc/agentkeygate/env), vault.json and
 #      master.key from the data directory are added to the backup. Decision: the master key is stored
 #      IN THE SAME encrypted archive as the vault. Without the key vault.json cannot be decrypted, so
 #      a vault without its key is useless for recovery, and keeping the key separately means
@@ -14,26 +14,26 @@
 #      is stored on the server, so the copy only protects against a leak of the backup files themselves).
 #      For the ssm vault (production) only the database goes into the backup: gw-DATE.db.age|gpg;
 #      for the file vault it is an archive: gw-DATE.tar.age|gpg with the files gw.db, vault.json, master.key;
-#   4) upload to S3 (the encrypted file only) if S3_BUCKET is set in /etc/agent-gateway/backup.env;
+#   4) upload to S3 (the encrypted file only) if S3_BUCKET is set in /etc/agentkeygate/backup.env;
 #   5) delete local copies older than 30 days.
 # Restore steps are in docs/DEPLOY.md, section 5. Passwords and keys are never printed.
 set -euo pipefail
 # The snapshot and the encryption are accessible to root only.
 umask 077
 
-readonly DATA_DIR="${GW_BACKUP_DATA_DIR:-/var/lib/agent-gateway}"
+readonly DATA_DIR="${GW_BACKUP_DATA_DIR:-/var/lib/agentkeygate}"
 readonly DB="${DATA_DIR}/gw.db"
-readonly BACKUP_DIR="/var/backups/agent-gateway"
-readonly AGE_PUB="/etc/agent-gateway/backup.age.pub"
-readonly GPG_PASS="/etc/agent-gateway/backup.pass"
-readonly BACKUP_ENV="/etc/agent-gateway/backup.env"
-readonly GW_ENV="/etc/agent-gateway/env"
+readonly BACKUP_DIR="/var/backups/agentkeygate"
+readonly AGE_PUB="/etc/agentkeygate/backup.age.pub"
+readonly GPG_PASS="/etc/agentkeygate/backup.pass"
+readonly BACKUP_ENV="/etc/agentkeygate/backup.env"
+readonly GW_ENV="/etc/agentkeygate/env"
 readonly KEEP_DAYS=30
 
 log() { echo "[$(date '+%F %T')] $*"; }
 
 # Do not run two backups at the same time (for example, if the previous one hung).
-exec 9>/run/agent-gateway-backup.lock
+exec 9>/run/agentkeygate-backup.lock
 flock -n 9 || { log "the previous backup is still running, skipping"; exit 0; }
 
 # S3 settings (S3_BUCKET, S3_PREFIX) are optional.
@@ -110,7 +110,7 @@ log "encrypted with ${ENC}: $(basename "$FINAL")"
 # Only the encrypted file goes to S3 (no other files are left at this point).
 if [[ -n "${S3_BUCKET:-}" ]]; then
   if command -v aws >/dev/null 2>&1; then
-    KEY_PREFIX="${S3_PREFIX:-agent-gateway}"
+    KEY_PREFIX="${S3_PREFIX:-agentkeygate}"
     aws s3 cp "$FINAL" "s3://${S3_BUCKET}/${KEY_PREFIX}/$(basename "$FINAL")" --sse AES256 --only-show-errors
     log "uploaded to s3://${S3_BUCKET}/${KEY_PREFIX}/ (retention is set by the bucket lifecycle rule)"
   else

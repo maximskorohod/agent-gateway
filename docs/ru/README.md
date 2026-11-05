@@ -1,4 +1,4 @@
-# agent-gateway
+# AgentKeyGate
 
 Шлюз временного доступа к API для ИИ-агентов, self-hosted. Агент получает пропуск на срок и с лимитом вызовов. Ключ API он не получает никогда.
 
@@ -29,7 +29,7 @@
 Направьте DNS-запись A на сервер и запустите:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/maximskorohod/agent-gateway/main/scripts/setup.sh | sudo bash -s -- --domain gw.example.com --repo https://github.com/maximskorohod/agent-gateway
+curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/main/scripts/setup.sh | sudo bash -s -- --domain gw.example.com --repo https://github.com/maximskorohod/agentkeygate
 ```
 
 По умолчанию сейф AWS SSM, ему нужна роль инстанса. Вне AWS добавьте `--vault file`.
@@ -68,7 +68,7 @@ npm test
 | Карточки онбординга | `/welcome` на вашем шлюзе | Готовые сниппеты для ChatGPT, Claude Code, Cursor, Claude Desktop и curl. Токен показан на карточке один раз. |
 | REST API | `/v1` | Скрипты и любой HTTP-клиент. |
 | MCP-сервер | `/mcp` | MCP-клиенты. Инструменты: `list_services`, `request_access`, `check_request`, `call`. |
-| Скилл агента | [skills/agent-gateway](../../skills/agent-gateway/SKILL.md) | Claude Code и другие агенты со скиллами. Скрипту `gw.sh` нужны `curl` и `jq`. |
+| Скилл агента | [skills/agentkeygate](../../skills/agentkeygate/SKILL.md) | Claude Code и другие агенты со скиллами. Скрипту `gw.sh` нужны `curl` и `jq`. |
 
 ### REST
 

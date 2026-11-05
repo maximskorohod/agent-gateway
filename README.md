@@ -1,4 +1,4 @@
-# agent-gateway
+# AgentKeyGate
 
 Self-hosted gateway that gives AI agents temporary, owner-approved access to APIs. The agent gets a pass limited by time and number of calls. It never gets your API key.
 
@@ -29,7 +29,7 @@ You can revoke a pass or an agent at any time. Revocation takes effect on the ne
 Point a DNS A record at the server, then run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/maximskorohod/agent-gateway/main/scripts/setup.sh | sudo bash -s -- --domain gw.example.com --repo https://github.com/maximskorohod/agent-gateway
+curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/main/scripts/setup.sh | sudo bash -s -- --domain gw.example.com --repo https://github.com/maximskorohod/agentkeygate
 ```
 
 The default vault is AWS SSM, which needs an instance role. Outside AWS, add `--vault file`.
@@ -68,7 +68,7 @@ The owner creates an agent in the web UI (Agents). The agent token (`gwa_...`) i
 | Onboarding cards | `/welcome` on your gateway | Ready snippets for ChatGPT, Claude Code, Cursor, Claude Desktop, and curl. The token is shown once on the card. |
 | REST API | `/v1` | Scripts and any HTTP client. |
 | MCP server | `/mcp` | MCP clients. Tools: `list_services`, `request_access`, `check_request`, `call`. |
-| Agent Skill | [skills/agent-gateway](skills/agent-gateway/SKILL.md) | Claude Code and other agents that load skills. Helper script `gw.sh` needs `curl` and `jq`. |
+| Agent Skill | [skills/agentkeygate](skills/agentkeygate/SKILL.md) | Claude Code and other agents that load skills. Helper script `gw.sh` needs `curl` and `jq`. |
 
 ### REST
 

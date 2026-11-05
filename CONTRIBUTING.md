@@ -1,6 +1,6 @@
 # Contributing
 
-agent-gateway is small on purpose: one owner, one SQLite file, one process. Please keep changes in that spirit.
+AgentKeyGate is small on purpose: one owner, one SQLite file, one process. Please keep changes in that spirit.
 
 ## Setup and tests
 

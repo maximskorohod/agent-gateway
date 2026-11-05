@@ -76,7 +76,7 @@ providers:
     injection: { type: header, name: authorization, prefix: 'Bearer ' }
     keyPattern: '^(ghp_[0-9A-Za-z]{30,}|github_pat_[0-9A-Za-z_]{40,})$'
     keyHint: 'expected token like ghp_… or github_pat_…'
-    extraHeaders: { 'x-github-api-version': '2022-11-28', 'user-agent': 'agent-gateway' }
+    extraHeaders: { 'x-github-api-version': '2022-11-28', 'user-agent': 'agentkeygate' }
     getKeyUrl: 'https://github.com/settings/personal-access-tokens/new'
     getKeyHint: 'Create a fine-grained token with read-only access to the repositories you need'
     readOnly: true

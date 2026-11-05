@@ -1,8 +1,8 @@
-# systemd unit of the agent-gateway service. Installed by setup.sh to /etc/systemd/system/gateway.service.
+# systemd unit of the AgentKeyGate service. Installed by setup.sh to /etc/systemd/system/gateway.service.
 
 [Unit]
-Description=Agent Gateway (temporary API access gateway for AI agents)
-Documentation=file:///opt/agent-gateway/app/docs/DEPLOY.md
+Description=AgentKeyGate (temporary API access gateway for AI agents)
+Documentation=file:///opt/agentkeygate/app/docs/DEPLOY.md
 After=network-online.target
 Wants=network-online.target
 # Never stop retrying after failures (fail-closed: agents get 503, the unit does not give up).
@@ -12,12 +12,12 @@ StartLimitIntervalSec=0
 Type=simple
 # The gateway user is created by setup.sh as a system user (no shell).
 # DynamicUser is intentionally not used: a stable uid is needed, because
-# ownership of /var/lib/agent-gateway, the nftables rules (meta skuid gateway),
+# ownership of /var/lib/agentkeygate, the nftables rules (meta skuid gateway),
 # IAM access to SSM and backup ownership depend on it. A dynamic uid would change on every start.
 User=gateway
 Group=gateway
-EnvironmentFile=/etc/agent-gateway/env
-WorkingDirectory=/opt/agent-gateway/app
+EnvironmentFile=/etc/agentkeygate/env
+WorkingDirectory=/opt/agentkeygate/app
 # DEP0040: the built-in punycode is called by tr46 from the chain grammy -> node-fetch@2; other warnings stay visible.
 ExecStart=/usr/bin/node --disable-warning=DEP0040 bin/gateway.js start
 Restart=always
@@ -26,7 +26,7 @@ RestartSec=3
 # ---- hardening ----
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/var/lib/agent-gateway
+ReadWritePaths=/var/lib/agentkeygate
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

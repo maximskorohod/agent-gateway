@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# gw.sh: get owner-approved access through agent-gateway and call APIs with the pass.
+# gw.sh: get owner-approved access through AgentKeyGate and call APIs with the pass.
 # The API key never reaches this script or the agent.
 #
 #   gw.sh request <service> <ttl_seconds> <calls> "<reason>"
 #   gw.sh call <service> <METHOD> <path> [json-body]
 #
-# Environment: AGENT_GATEWAY_URL, AGENT_GATEWAY_TOKEN (agent token, gwa_...).
+# Environment: AGENTKEYGATE_URL, AGENTKEYGATE_TOKEN (agent token, gwa_...).
 # Optional: GW_CREDENTIAL_ID (when the service has several keys).
-# The pass is saved to ${XDG_RUNTIME_DIR:-$HOME/.cache}/agent-gateway/<service>.token (directory mode 700, file mode 600).
+# The pass is saved to ${XDG_RUNTIME_DIR:-$HOME/.cache}/agentkeygate/<service>.token (directory mode 700, file mode 600).
 #
 # Exit codes:
 #   0  success
@@ -31,9 +31,9 @@ die() { echo "gw: $*" >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || die "curl is required"
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
-: "${AGENT_GATEWAY_URL:?set AGENT_GATEWAY_URL to the gateway base URL}"
-: "${AGENT_GATEWAY_TOKEN:?set AGENT_GATEWAY_TOKEN to your agent token}"
-BASE="${AGENT_GATEWAY_URL%/}"
+: "${AGENTKEYGATE_URL:?set AGENTKEYGATE_URL to the gateway base URL}"
+: "${AGENTKEYGATE_TOKEN:?set AGENTKEYGATE_TOKEN to your agent token}"
+BASE="${AGENTKEYGATE_URL%/}"
 
 HTTP_CODE=""
 BODY=""
@@ -43,7 +43,7 @@ check_service() {
 }
 
 pass_dir() {
-  echo "${XDG_RUNTIME_DIR:-${HOME:?HOME is not set}/.cache}/agent-gateway"
+  echo "${XDG_RUNTIME_DIR:-${HOME:?HOME is not set}/.cache}/agentkeygate"
 }
 
 token_file() {
@@ -63,7 +63,7 @@ save_pass() {
 # Calls the gateway. Sets HTTP_CODE and BODY.
 # The bearer token goes through a curl config read from a file descriptor, so it never appears in argv.
 api() {
-  local method="$1" path="$2" data="${3:-}" auth="${4:-$AGENT_GATEWAY_TOKEN}"
+  local method="$1" path="$2" data="${3:-}" auth="${4:-$AGENTKEYGATE_TOKEN}"
   local -a extra=()
   if [[ -n "$data" ]]; then extra=(--data-binary "$data"); fi
   local out rc=0
@@ -138,7 +138,7 @@ cmd_request() {
     400)
       echo "$BODY" >&2
       die "several keys exist for $service: set GW_CREDENTIAL_ID to one of the ids above" ;;
-    401) die "agent token rejected: check AGENT_GATEWAY_TOKEN" ;;
+    401) die "agent token rejected: check AGENTKEYGATE_TOKEN" ;;
     403) die "denied: $(jq -r '.reason // .error // "no details"' <<<"$BODY")" ;;
     429) die "rate limited: wait at least 60 seconds" ;;
     *) die "unexpected HTTP $HTTP_CODE from the gateway" ;;

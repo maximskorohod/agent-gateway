@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install or update agent-gateway on a VPS: Debian 12 / Ubuntu 24.04, Amazon EC2 t3.micro (1 GB RAM).
+# Install or update AgentKeyGate on a VPS: Debian 12 / Ubuntu 24.04, Amazon EC2 t3.micro (1 GB RAM).
 #
 # Run as root:
 #   sudo ./setup.sh --domain gw.example.com [--repo URL] [--branch main] [--vault ssm|file] [--region eu-central-1]
@@ -11,11 +11,11 @@ set -euo pipefail
 
 # ---------- constants ----------
 readonly APP_USER="gateway"
-readonly APP_HOME="/opt/agent-gateway"
+readonly APP_HOME="/opt/agentkeygate"
 readonly APP_DIR="${APP_HOME}/app"
-readonly DATA_DIR="/var/lib/agent-gateway"
-readonly BACKUP_DIR="/var/backups/agent-gateway"
-readonly ETC_DIR="/etc/agent-gateway"
+readonly DATA_DIR="/var/lib/agentkeygate"
+readonly BACKUP_DIR="/var/backups/agentkeygate"
+readonly ETC_DIR="/etc/agentkeygate"
 readonly ENV_FILE="${ETC_DIR}/env"
 readonly GW_PORT="8080"
 # Authenticated Origin Pulls (Cloudflare mode): the operator places the CA file, the script does not download it.
@@ -35,7 +35,7 @@ Usage:
   sudo ./setup.sh --domain gw.example.com [--repo URL] [--branch BRANCH] [--vault ssm|file] [--region REGION]
 
   --domain   required; the domain whose A record points to the Elastic IP (Cloudflare: grey cloud)
-  --repo     git repository (default: https://github.com/maximskorohod/agent-gateway.git)
+  --repo     git repository (default: https://github.com/maximskorohod/agentkeygate.git)
              or an absolute path to a bare repository on the server (for a private repository)
   --branch   branch (default: main)
   --vault    ssm (default, production: keys in AWS SSM via the IAM role) or file (tests only)
@@ -66,7 +66,7 @@ run_as_gw() {
 
 # ---------- argument parsing ----------
 DOMAIN=""
-REPO="https://github.com/maximskorohod/agent-gateway.git"
+REPO="https://github.com/maximskorohod/agentkeygate.git"
 BRANCH="main"
 VAULT="ssm"
 REGION="eu-central-1"
@@ -151,8 +151,8 @@ else
   echo "    swap is already active, skipping"
 fi
 grep -qE '^/swapfile[[:space:]]' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
-echo 'vm.swappiness = 10' > /etc/sysctl.d/99-agent-gateway.conf
-sysctl -q -p /etc/sysctl.d/99-agent-gateway.conf
+echo 'vm.swappiness = 10' > /etc/sysctl.d/99-agentkeygate.conf
+sysctl -q -p /etc/sysctl.d/99-agentkeygate.conf
 
 # ---------- 3. Node.js 22 (NodeSource) ----------
 step "Node.js 22"
@@ -326,7 +326,7 @@ mv -f /etc/nftables.conf.new /etc/nftables.conf
 
 # ---------- 12. backups ----------
 step "Backups: cron and script"
-install -m 0644 -o root -g root "$APP_DIR/deploy/backup.cron" /etc/cron.d/agent-gateway
+install -m 0644 -o root -g root "$APP_DIR/deploy/backup.cron" /etc/cron.d/agentkeygate
 bash -n "$APP_DIR/scripts/backup.sh"
 
 # ---------- 13. starting services ----------

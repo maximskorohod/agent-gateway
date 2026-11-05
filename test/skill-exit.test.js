@@ -1,4 +1,4 @@
-// Скилл skills/agent-gateway/scripts/gw.sh: коды выхода при закрытии метода фильтром владельца (п. 7.3).
+// Скилл skills/agentkeygate/scripts/gw.sh: коды выхода при закрытии метода фильтром владельца (п. 7.3).
 // Mock-шлюз на localhost; нужны bash, curl и jq — нет их, тест пропускается.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,7 +9,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'agent-gateway', 'scripts', 'gw.sh').replace(/\\/g, '/');
+const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'agentkeygate', 'scripts', 'gw.sh').replace(/\\/g, '/');
 const run = (cmd, args, env = {}) => new Promise((resolve) => {
   execFile(cmd, args, { env: { ...process.env, ...env }, timeout: 20000, windowsHide: true }, (err, stdout, stderr) => resolve({ code: err ? (typeof err.code === 'number' ? err.code : -1) : 0, stdout, stderr }));
 });
@@ -34,13 +34,13 @@ before(async () => {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   url = `http://127.0.0.1:${server.address().port}`;
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-skill-'));
-  // готовый пропуск: gw.sh читает его из ${XDG_RUNTIME_DIR}/agent-gateway/ (значение не настоящее, собрано в рантайме)
-  fs.mkdirSync(path.join(tmp, 'agent-gateway'), { mode: 0o700 });
-  fs.writeFileSync(path.join(tmp, 'agent-gateway', 'bitrix24.token'), `${['gw', 't_'].join('')}${'0'.repeat(24)}\n`);
+  // готовый пропуск: gw.sh читает его из ${XDG_RUNTIME_DIR}/agentkeygate/ (значение не настоящее, собрано в рантайме)
+  fs.mkdirSync(path.join(tmp, 'agentkeygate'), { mode: 0o700 });
+  fs.writeFileSync(path.join(tmp, 'agentkeygate', 'bitrix24.token'), `${['gw', 't_'].join('')}${'0'.repeat(24)}\n`);
 });
 after(() => { server.close(); server.closeAllConnections?.(); fs.rmSync(tmp, { recursive: true, force: true }); });
 
-const gw = (...args) => run('bash', [SCRIPT, ...args], { AGENT_GATEWAY_URL: url, AGENT_GATEWAY_TOKEN: `${['gw', 'a_'].join('')}x`, XDG_RUNTIME_DIR: tmp.replace(/\\/g, '/') });
+const gw = (...args) => run('bash', [SCRIPT, ...args], { AGENTKEYGATE_URL: url, AGENTKEYGATE_TOKEN: `${['gw', 'a_'].join('')}x`, XDG_RUNTIME_DIR: tmp.replace(/\\/g, '/') });
 
 test('gw.sh call: method_not_allowed → код 3, write_not_allowed → код 4, тело шлюза остаётся в stdout', async (t) => {
   if (!tools) return t.skip('нет bash, curl или jq');
@@ -85,7 +85,7 @@ test('gw.sh call (ревью M5): filter[ID]= и @ в запросе прохо�
   await new Promise((res) => dead.listen(0, '127.0.0.1', res));
   const deadUrl = `http://127.0.0.1:${dead.address().port}`;
   await new Promise((res) => dead.close(res));
-  r = await run('bash', [SCRIPT, 'call', 'bitrix24', 'GET', 'crm.deal.list'], { AGENT_GATEWAY_URL: deadUrl, AGENT_GATEWAY_TOKEN: `${['gw', 'a_'].join('')}x`, XDG_RUNTIME_DIR: tmp.replace(/\\/g, '/') });
+  r = await run('bash', [SCRIPT, 'call', 'bitrix24', 'GET', 'crm.deal.list'], { AGENTKEYGATE_URL: deadUrl, AGENTKEYGATE_TOKEN: `${['gw', 'a_'].join('')}x`, XDG_RUNTIME_DIR: tmp.replace(/\\/g, '/') });
   assert.equal(r.code, 1);
   assert.match(r.stderr, /cannot reach/);
 });

@@ -1,6 +1,6 @@
 > English version: [docs/DEPLOY.md](../DEPLOY.md)
 
-# Развёртывание agent-gateway
+# Развёртывание AgentKeyGate
 
 Целевой сервер: Debian 12 или Ubuntu 24.04, Amazon EC2 t3.micro (1 ГБ RAM, swap 1 ГБ создаёт setup.sh).
 
@@ -68,15 +68,15 @@ curl -s -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/met
 На сервере от root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/maximskorohod/agent-gateway/main/scripts/setup.sh -o /root/setup.sh
+curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/main/scripts/setup.sh -o /root/setup.sh
 sudo bash /root/setup.sh --domain gw.example.com --vault ssm --region eu-central-1
 ```
 
 Что делает скрипт, по шагам:
 1. ставит системные пакеты, создаёт swap 1 ГБ, ставит Node.js 22 (NodeSource) и Caddy;
 2. создаёт системного пользователя `gateway` без shell;
-3. клонирует репозиторий в `/opt/agent-gateway/app` (код принадлежит root, `gateway` писать в него не может), собирает зависимости от непривилегированного пользователя (`npm ci --ignore-scripts`, затем `npm rebuild argon2 better-sqlite3`);
-4. создаёт `/var/lib/agent-gateway` (данные) и `/etc/agent-gateway/env` (переменные `GW_*`, права 0600);
+3. клонирует репозиторий в `/opt/agentkeygate/app` (код принадлежит root, `gateway` писать в него не может), собирает зависимости от непривилегированного пользователя (`npm ci --ignore-scripts`, затем `npm rebuild argon2 better-sqlite3`);
+4. создаёт `/var/lib/agentkeygate` (данные) и `/etc/agentkeygate/env` (переменные `GW_*`, права 0600);
 5. ставит systemd-юнит `gateway.service` с харденингом, конфиг Caddy с вашим доменом, правила nftables и cron-задачу бэкапа;
 6. запускает сервисы, ждёт `/healthz` и вызывает `gateway init`.
 
@@ -102,7 +102,7 @@ sudo bash /root/setup.sh --domain gw.example.com --vault ssm --region eu-central
 3. Сверьте `sha256sum /etc/caddy/cloudflare-origin-pull-ca.pem` с константой `CF_CA_SHA256` в начале `setup.sh` (`c14fed0c…b843`, CA до 01.11.2029; сверено 04.11.2026 двумя загрузками с разных машин).
 4. Запустите `setup.sh --behind-cloudflare ...`. Скрипт откажется работать, если отпечаток не совпал. Если Cloudflare выпустил новый CA, передайте его отпечаток флагом `--cf-ca-sha256 <отпечаток>` после такой же сверки.
 
-**Без Cloudflare** (DNS only, по умолчанию) подмена IP проверяется так: запрос с поддельными `X-Forwarded-For`, `X-Real-IP` и `CF-Connecting-IP` на неверный пароль, затем в журнале входа (`sqlite3 -readonly /var/lib/agent-gateway/gw.db "SELECT target FROM audit WHERE action='login.fail' ORDER BY rowid DESC LIMIT 1"`) должен стоять настоящий адрес клиента. Caddy без `trusted_proxies` подменяет заголовок своим адресом клиента, шлюз доверяет только loopback. Проверено на staging 04.11; там же HTTPS на голый IP сервера не отвечает (сертификат выдан только на домен).
+**Без Cloudflare** (DNS only, по умолчанию) подмена IP проверяется так: запрос с поддельными `X-Forwarded-For`, `X-Real-IP` и `CF-Connecting-IP` на неверный пароль, затем в журнале входа (`sqlite3 -readonly /var/lib/agentkeygate/gw.db "SELECT target FROM audit WHERE action='login.fail' ORDER BY rowid DESC LIMIT 1"`) должен стоять настоящий адрес клиента. Caddy без `trusted_proxies` подменяет заголовок своим адресом клиента, шлюз доверяет только loopback. Проверено на staging 04.11; там же HTTPS на голый IP сервера не отвечает (сертификат выдан только на домен).
 
 Порядок важен: сначала Global AOP в панели и прокси у записи, потом `setup.sh --behind-cloudflare`. Если Global AOP выключен, Caddy обрывает соединение после рукопожатия, и Cloudflare показывает ошибку **520** (проверено на staging 05.11). После переключения сверьте состояние тумблера перезагрузкой страницы.
 
@@ -125,7 +125,7 @@ sudo journalctl -u gateway -n 20 --no-pager | grep 203.0.113.7 || echo "подд
 
 Ожидаемо: пункты 1 и 2 завершаются ошибкой соединения (код 000) или отказом, пункт 3 отвечает, поддельного адреса в журнале нет. Если пункты 1 и 2 вернули 200, AOP не работает: проверьте, что строки `#cf` в `/etc/caddy/Caddyfile` раскомментированы (`grep client_auth /etc/caddy/Caddyfile`).
 
-**Закрытый репозиторий**: заведите на сервере голый репозиторий (`git init --bare /srv/agent-gateway.git`), залейте ветку `git push <ssh-хост>:/srv/agent-gateway.git main` и передайте `--repo /srv/agent-gateway.git`. Токен GitHub на сервере не нужен. Сам `setup.sh` можно достать из того же репозитория: `git --git-dir=/srv/agent-gateway.git show main:scripts/setup.sh > /root/setup.sh` (проверено на staging). Если клонируете голый репозиторий руками, указывайте ветку (`git clone --branch main …`): `HEAD` у нового голого репозитория указывает на несуществующую ветку, и клон получается пустым.
+**Закрытый репозиторий**: заведите на сервере голый репозиторий (`git init --bare /srv/agentkeygate.git`), залейте ветку `git push <ssh-хост>:/srv/agentkeygate.git main` и передайте `--repo /srv/agentkeygate.git`. Токен GitHub на сервере не нужен. Сам `setup.sh` можно достать из того же репозитория: `git --git-dir=/srv/agentkeygate.git show main:scripts/setup.sh > /root/setup.sh` (проверено на staging). Если клонируете голый репозиторий руками, указывайте ветку (`git clone --branch main …`): `HEAD` у нового голого репозитория указывает на несуществующую ветку, и клон получается пустым.
 
 ## 3. Обновление
 
@@ -133,24 +133,24 @@ sudo journalctl -u gateway -n 20 --no-pager | grep 203.0.113.7 || echo "подд
 
 ## 4. Повторно открыть мастер (`gateway init`)
 
-`init` сбрасывает пароль, 2FA, сессии и пропуска. Ключи и агенты остаются. Команда (от root, переменные берутся из `/etc/agent-gateway/env`):
+`init` сбрасывает пароль, 2FA, сессии и пропуска. Ключи и агенты остаются. Команда (от root, переменные берутся из `/etc/agentkeygate/env`):
 
 ```bash
-sudo bash -c 'set -a; . /etc/agent-gateway/env; set +a; runuser -u gateway -- env -C /opt/agent-gateway/app -i PATH=/usr/bin:/bin $(env | grep "^GW_") /usr/bin/node bin/gateway.js init'
+sudo bash -c 'set -a; . /etc/agentkeygate/env; set +a; runuser -u gateway -- env -C /opt/agentkeygate/app -i PATH=/usr/bin:/bin $(env | grep "^GW_") /usr/bin/node bin/gateway.js init'
 ```
 
 ## 5. Резервные копии и восстановление
 
-Бэкап делается каждую ночь в 03:17 (`/etc/cron.d/agent-gateway`, скрипт `scripts/backup.sh`). Копии лежат в `/var/backups/agent-gateway/`, старше 30 дней удаляются.
+Бэкап делается каждую ночь в 03:17 (`/etc/cron.d/agentkeygate`, скрипт `scripts/backup.sh`). Копии лежат в `/var/backups/agentkeygate/`, старше 30 дней удаляются.
 
 Шифрование:
-- **age** (предпочтительно): `sudo apt install age`, положите публичный ключ получателя в `/etc/agent-gateway/backup.age.pub`. Приватный ключ храните вне сервера.
-- **gpg** (если age нет): положите пароль в `/etc/agent-gateway/backup.pass` (0600, root). Пароль хранится на том же сервере, поэтому копия защищает только от утечки самих файлов бэкапа.
+- **age** (предпочтительно): `sudo apt install age`, положите публичный ключ получателя в `/etc/agentkeygate/backup.age.pub`. Приватный ключ храните вне сервера.
+- **gpg** (если age нет): положите пароль в `/etc/agentkeygate/backup.pass` (0600, root). Пароль хранится на том же сервере, поэтому копия защищает только от утечки самих файлов бэкапа.
 - Шифрование обязательно. Если нет ни age с ключом, ни gpg с паролем, скрипт пишет ошибку, выходит с кодом 1 и ничего не сохраняет (открытых копий на диске не бывает).
 - Файловый сейф (`GW_VAULT=file`): в копию входят `vault.json` и `master.key`, файл называется `gw-ДАТА.tar.age|gpg` (внутри `gw.db`, `vault.json`, `master.key`). Мастер-ключ лежит в том же шифруемом архиве, поэтому его защищает только шифрование: храните приватный ключ age вне сервера. Для сейфа ssm в копии только база.
-- Ротация аудита (старше 90 дней, архивом, шлюз остановлен): `gateway audit rotate --days 90 --out /var/backups/agent-gateway/audit`. Запись в журнале только на добавление, поэтому плановой очистки через DELETE нет.
+- Ротация аудита (старше 90 дней, архивом, шлюз остановлен): `gateway audit rotate --days 90 --out /var/backups/agentkeygate/audit`. Запись в журнале только на добавление, поэтому плановой очистки через DELETE нет.
 
-Выгрузка в S3 (необязательно): в `/etc/agent-gateway/backup.env` задайте `S3_BUCKET=...` и при желании `S3_PREFIX=...`. Нужен `aws` CLI и IAM-право `s3:PutObject` для роли инстанса. Срок хранения в S3 задаётся lifecycle-правилом бакета (30 дней).
+Выгрузка в S3 (необязательно): в `/etc/agentkeygate/backup.env` задайте `S3_BUCKET=...` и при желании `S3_PREFIX=...`. Нужен `aws` CLI и IAM-право `s3:PutObject` для роли инстанса. Срок хранения в S3 задаётся lifecycle-правилом бакета (30 дней).
 
 Восстановление:
 
@@ -158,23 +158,23 @@ sudo bash -c 'set -a; . /etc/agent-gateway/env; set +a; runuser -u gateway -- en
 # 1. Расшифровать копию (на вашей машине или на сервере):
 age -d -i ~/backup.key -o gw.db gw-2026-11-01.db.age
 #    или для gpg:
-gpg --batch --pinentry-mode loopback --passphrase-file /etc/agent-gateway/backup.pass -d -o gw.db gw-2026-11-01.db.gpg
+gpg --batch --pinentry-mode loopback --passphrase-file /etc/agentkeygate/backup.pass -d -o gw.db gw-2026-11-01.db.gpg
 
 #    для файлового сейфа архив gw-ДАТА.tar.age|gpg: расшифровать так же, затем распаковать:
 #    tar -xf gw.tar  # gw.db, vault.json, master.key
 # 2. Остановить шлюз. Для файлового сейфа сначала вернуть сейф в каталог данных:
 sudo systemctl stop gateway
-#    sudo install -o gateway -g gateway -m 0600 vault.json master.key /var/lib/agent-gateway/   (по файлу, не пачкой, если имена разные)
+#    sudo install -o gateway -g gateway -m 0600 vault.json master.key /var/lib/agentkeygate/   (по файлу, не пачкой, если имена разные)
 #    и положить gw.db туда, где его может прочитать gateway:
-sudo install -o gateway -g gateway -m 0600 gw.db /var/lib/agent-gateway/restore.db
+sudo install -o gateway -g gateway -m 0600 gw.db /var/lib/agentkeygate/restore.db
 rm -f gw.db
 
 # 3. Восстановить (ротируется ключ подписи пропусков, все пропуска отзываются, сессии, одноразовые ссылки, ожидающие заявки
 #    и временные секреты 2FA сбрасываются):
-sudo bash -c 'set -a; . /etc/agent-gateway/env; set +a; runuser -u gateway -- env -C /opt/agent-gateway/app -i PATH=/usr/bin:/bin $(env | grep "^GW_") /usr/bin/node bin/gateway.js restore /var/lib/agent-gateway/restore.db'
+sudo bash -c 'set -a; . /etc/agentkeygate/env; set +a; runuser -u gateway -- env -C /opt/agentkeygate/app -i PATH=/usr/bin:/bin $(env | grep "^GW_") /usr/bin/node bin/gateway.js restore /var/lib/agentkeygate/restore.db'
 
 # 4. Запустить и удалить временный файл:
-sudo rm -f /var/lib/agent-gateway/restore.db
+sudo rm -f /var/lib/agentkeygate/restore.db
 sudo systemctl start gateway
 ```
 
@@ -191,7 +191,7 @@ journalctl -u gateway -f                        # логи шлюза
 journalctl -u caddy -f                          # логи Caddy (ошибки TLS и прокси)
 tail -f /var/log/caddy/access.log               # доступ без query string и заголовков
 sudo nft list ruleset | less                    # текущий фаервол
-sudo tail -n 50 /var/log/agent-gateway-backup.log
+sudo tail -n 50 /var/log/agentkeygate-backup.log
 ```
 
 Логи блокировок фаервола (`agw-ssrf-…`, `agw-out-drop`, `agw-in-drop`) пишутся в журнал ядра: `journalctl -k | grep agw-`.
@@ -217,7 +217,7 @@ docker compose exec gateway node bin/gateway.js init   # печатает одн
 
 ## 8. Переменные окружения
 
-На VPS их пишет `setup.sh` в `/etc/agent-gateway/env`, в Docker они берутся из `.env`.
+На VPS их пишет `setup.sh` в `/etc/agentkeygate/env`, в Docker они берутся из `.env`.
 
 | Переменная | По умолчанию | Назначение |
 |---|---|---|
@@ -253,11 +253,11 @@ docker compose exec gateway node bin/gateway.js init   # печатает одн
 2. **Процесс.** Сетевой guard внутри Node блокирует исходящие TCP-соединения и DNS, вызовы идут во встроенный мок. Guard не перехватывает UDP (`dgram`) и дочерние процессы.
 3. **Сервер.** Ограничение на уровне ОС, которое работает даже при ошибке в коде: systemd и nftables, как ниже.
 
-Переменные демо (в `/etc/agent-gateway/env` отдельного экземпляра):
+Переменные демо (в `/etc/agentkeygate/env` отдельного экземпляра):
 
 ```
 GW_DEMO=1
-GW_DATA_DIR=/var/lib/agent-gateway-demo
+GW_DATA_DIR=/var/lib/agentkeygate-demo
 GW_VAULT=file
 GW_PUBLIC_URL=https://demo.example.com
 GW_PROD_HOSTS=gw.example.com
