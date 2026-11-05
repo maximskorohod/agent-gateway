@@ -1,5 +1,5 @@
 // Экраны ключей: список и заявки (1), выбор сервиса (2), форма ключа (3), страница ключа.
-import { html, raw, form, layout, enc, fmtDate, fmtDuration, plural, isoDate, keyName } from './html.js';
+import { html, raw, form, layout, enc, fmtDate, fmtDuration, plural, isoDate, keyName, isDemo } from './html.js';
 import { t, hasKey, providerHint } from '../../i18n.js';
 import { normalizeFilter, protectionOf, defaultFilterFor } from '../../core/filter.js';
 
@@ -14,6 +14,8 @@ const sel = (cond) => (cond ? raw(' selected') : '');
 const chk = (cond) => (cond ? raw(' checked') : '');
 
 function approvalOptions(telegramConnected) {
+  // в демо нет кода 2FA: остальные варианты отклонит demoRouteGuard
+  if (isDemo()) return ['web_button'];
   return telegramConnected
     ? ['tg_button', 'tg_code', 'web_button', 'web_code']
     : ['web_button', 'web_code'];
@@ -55,7 +57,7 @@ function policyFields(v = {}, { telegramConnected = false, sensitive = false } =
     <fieldset>
       <legend>${t('policy.how')}</legend>
       ${MODE_OPTIONS.map((m) => html`<label class="inline"><input type="radio" name="mode" value="${m}"${chk(mode === m)}> ${t(`policy.choice.${m}`)}</label>${m === 'always' ? alwaysForSelect(v) : ''}`)}
-      <p class="hint">${t('policy.always_hint')}</p>
+      <p class="hint">${t(isDemo() ? 'demo.always_hint' : 'policy.always_hint')}</p>
       ${sensitive ? html`<div class="sensitive">
         <p class="hint">${t('policy.sensitive_warning')}</p>
         <label class="inline"><input type="checkbox" name="confirm_sensitive" value="1"> ${t('policy.sensitive_confirm')}</label>
@@ -66,11 +68,11 @@ function policyFields(v = {}, { telegramConnected = false, sensitive = false } =
       <label>${t('policy.name')}
         <input name="label" value="${v.label ?? ''}" maxlength="80" autocomplete="off" placeholder="${t('policy.name_ph')}">
       </label>
-      <label>${t('policy.approval')}
+      ${approvals.length > 1 ? html`<label>${t('policy.approval')}
         <select name="approval">
           ${approvals.map((a) => html`<option value="${a}"${sel(a === approval)}>${t(`policy.approval.${a}`)}</option>`)}
         </select>
-      </label>
+      </label>` : html`<input type="hidden" name="approval" value="${approval}">`}
       <label>${t('policy.max_ttl')}
         <select name="max_ttl">
           ${TTL_OPTIONS.map((t) => html`<option value="${t}"${sel(t === maxTtl)}>${fmtDuration(t)}</option>`)}
@@ -230,15 +232,43 @@ function keySummary(c, providers, line) {
     </div>`;
 }
 
+/** Один шаг сценария демо: номер, заголовок, содержимое только у текущего шага. */
+function demoStep(n, current, title, body) {
+  const state = n === current ? 'on' : n < current ? 'done' : 'todo';
+  return html`<li class="${state}"${n === current ? raw(' aria-current="step"') : ''}>
+      <span class="step-num" aria-hidden="true">${n}</span>
+      <div class="step-body">
+        <span class="title">${title}</span>
+        ${n === current ? body : ''}
+      </div>
+    </li>`;
+}
+
+/** Сценарий демо из трёх шагов. scenario — { step: 1 } | { step: 2, requestId } | { step: 3, curl }. */
+function demoSteps(scenario, csrf) {
+  const { step = 1, requestId = '', curl = '' } = scenario ?? {};
+  return html`<section class="card demo-steps">
+      <h2>${t('demo.steps_title')}</h2>
+      <ol class="steps">
+        ${demoStep(1, step, t('demo.step1'), html`
+          <p class="muted small">${t('demo.simulate_hint')}</p>
+          ${form('/demo/simulate', html`<button class="btn primary" type="submit">${t('demo.simulate')}</button>`, csrf)}`)}
+        ${demoStep(2, step, t('demo.step2'), html`
+          <p class="muted small">${t('demo.step2_hint')}</p>
+          <a class="btn primary" href="/requests/${enc(requestId)}">${t('demo.review')}</a>`)}
+        ${demoStep(3, step, t('demo.step3'), html`
+          <p class="muted small">${t('demo.step3_hint')}</p>
+          <div class="token-box"><code id="demo-curl">${curl}</code></div>
+          <p class="actions"><button class="btn primary" type="button" data-copy="#demo-curl" data-copied="${t('agents.copied')}" data-selected="${t('agents.selected')}">${t('agents.copy')}</button></p>
+          <p class="small"><a href="/stats">${t('demo.activity_link')}</a></p>
+          ${form('/demo/simulate', html`<button class="btn" type="submit">${t('demo.simulate_again')}</button>`, csrf)}`)}
+      </ol>
+    </section>`;
+}
+
 /** Экран 1: колонка заявок и ключей, справа карточка первого ключа. keyLine — «Агент увидит…» для этого ключа. */
-export function keysPage({ csrf, credentials = [], pending = [], providers = [], keyLine = null, flash = null, onboarding = null, demo = false } = {}) {
-  // демо: кнопка «Simulate agent request» создаёт заявку от демо-агента через настоящий requests.submit
-  const demoBlock = demo
-    ? html`<section class="card" role="note">
-        <p class="muted">${t('demo.simulate_hint')}</p>
-        ${form('/demo/simulate', html`<button class="btn primary" type="submit">${t('demo.simulate')}</button>`, csrf)}
-      </section>`
-    : '';
+export function keysPage({ csrf, credentials = [], pending = [], providers = [], keyLine = null, flash = null, onboarding = null, demo = false, scenario = null } = {}) {
+  const demoBlock = demo ? demoSteps(scenario, csrf) : '';
   // onboarding — { count } пока онбординг не пропущен и нет ни агента, ни ключа; иначе null
   const onboardingBlock = onboarding
     ? html`<section class="card" role="note"><p class="actions"><a class="btn primary" href="/welcome">${t('welcome.title')}</a> <span class="muted">${t('welcome.progress', { n: onboarding.count })}</span></p></section>`
@@ -346,7 +376,7 @@ function protectFields(prov, f) {
         <p class="hint">${t('protect.read_only_hint')}</p>` : ''}
       ${a.mask ? html`<label class="inline"><input type="checkbox" name="mask" value="1"${chk(f.mask)}> ${t('protect.mask')}</label>
         <p class="hint">${t('protect.mask_hint')}</p>` : ''}
-      <p class="hint">${t('protect.weaken_hint')}</p>
+      ${isDemo() ? '' : html`<p class="hint">${t('protect.weaken_hint')}</p>`}
     </fieldset>`;
 }
 
@@ -374,7 +404,7 @@ function filterCard(cred, prov, csrf) {
             <textarea name="fields_extra" rows="2" autocomplete="off" spellcheck="false" placeholder="result.ID">${f.fields.join('\n')}</textarea>
           </label>
         </details>
-        <p class="hint">${t('filter.deny_hint')}</p>` : ''}
+        <p class="hint">${t(isDemo() ? 'demo.filter_deny_hint' : 'filter.deny_hint')}</p>` : ''}
         ${protectFields(prov, f)}
         <button class="btn primary" type="submit">${t('filter.save')}</button>
       `, csrf)}
@@ -445,7 +475,7 @@ export function keyDetail({ csrf, cred, provider, telegramConnected = false, fla
       <button class="btn primary" type="submit">${t('key.save')}</button>
     `, csrf)}
     ${prov.filter || protectionOf(prov).readOnly || protectionOf(prov).mask ? filterCard(cred, prov, csrf) : ''}
-    ${previewCard(cred, prov, csrf, preview)}
+    ${isDemo() ? '' : html`${previewCard(cred, prov, csrf, preview)}
     <section class="card">
       <h2>${t('key.replace_title')}</h2>
       ${form(`/keys/${id}/replace`, html`
@@ -461,7 +491,7 @@ export function keyDetail({ csrf, cred, provider, telegramConnected = false, fla
         <p class="hint">${t('key.delete_hint')}</p>
         ${form(`/keys/${id}/delete`, html`<button class="btn btn-danger" type="submit">${t('key.delete')}</button>`, csrf)}
       </details>
-    </section>
+    </section>`}
     <p><a href="/keys">${t('keys.back')}</a></p>
   `, {
     csrf,

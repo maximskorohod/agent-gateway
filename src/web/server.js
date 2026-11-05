@@ -25,6 +25,7 @@ import { readChannelMeta, writeChannelMeta, checkSlackWebhook, checkSmtp, codeOf
 import { DEMO_AGENT_ID } from '../demo/reset.js';
 
 const TOTP_RECENT = 300;
+const DEMO_RUNS_MAX = 1000; // столько же, сколько плашек: демо рассчитано на 500 сессий
 
 export async function registerWeb(fastify, ctx) {
   const { repo, vault, catalog, requests, config, logger, notify, tg, auth, keys, proxy } = ctx;
@@ -301,10 +302,25 @@ export async function registerWeb(fastify, ctx) {
     const credentials = repo.listCredentials();
     // «Агент увидит: …» для ключа в карточке справа
     const keyLine = credentials[0] ? filterLine(credentials[0].filter, catalog.get(credentials[0].provider)) : null;
-    return html(reply, V.keysPage({ csrf: req.csrf, onboarding: needsWelcome(ob) ? ob : null, credentials, pending: pendingList, providers: catalog.list(), keyLine, flash: takeFlash(req), demo: !!config.demo }));
+    return html(reply, V.keysPage({ csrf: req.csrf, onboarding: needsWelcome(ob) ? ob : null, credentials, pending: pendingList, providers: catalog.list(), keyLine, flash: takeFlash(req), demo: !!config.demo, scenario: config.demo ? demoScenario(req) : null }));
   });
 
-  // ---- демо: «Simulate agent request» создаёт заявку демо-агента через настоящий requests.submit (лимит 6/мин на IP стоит в demoRouteGuard)
+  // ---- демо: сценарий из трёх шагов. Заявка запоминается на сессию посетителя, шаг выводится из её состояния в базе.
+  // Пропуск подписан и нигде не хранится: при показе выпускается заново, в журнал попадает только адрес страницы.
+  const demoRuns = new Map(); // sessionId -> requestId
+  function demoScenario(req) {
+    const requestId = demoRuns.get(req.session.idHash);
+    const s = requestId ? requests.status(requestId) : null;
+    if (s?.status === 'pending') return { step: 2, requestId };
+    if (s?.status === 'approved' && s.grant) {
+      const { token } = ctx.grants.reissueToken(s.grant);
+      return { step: 3, curl: `curl -s ${config.publicUrl}/v1/proxy/demo/deals -H "Authorization: Bearer ${token}"` };
+    }
+    demoRuns.delete(req.session.idHash); // отклонена, истекла или стёрта сбросом: сценарий с начала
+    return { step: 1 };
+  }
+
+  // «Simulate agent request» создаёт заявку демо-агента через настоящий requests.submit (лимит 6/мин на IP стоит в demoRouteGuard)
   if (config.demo) {
     fastify.post('/demo/simulate', async (req, reply) => {
       if (!requireOwner(req, reply)) return;
@@ -314,7 +330,11 @@ export async function registerWeb(fastify, ctx) {
       const r = requests.submit({ agent, credential, ttl: 900, calls: 20, reason: t('demo.simulate_reason'), via: 'demo' });
       if (r.kind === 'denied') flash(req, 'error', t('demo.simulate_failed', { reason: r.reason }));
       else if (r.kind === 'too_many_pending') flash(req, 'error', t('demo.simulate_failed', { reason: 'too_many_pending' }));
-      else flash(req, 'ok', t('demo.simulated'));
+      else {
+        if (demoRuns.size >= DEMO_RUNS_MAX && !demoRuns.has(req.session.idHash)) demoRuns.delete(demoRuns.keys().next().value);
+        demoRuns.set(req.session.idHash, r.kind === 'granted' ? r.grant.request_id : r.requestId); // режим ключа «без вопросов» сразу даёт пропуск
+        flash(req, 'ok', t('demo.simulated'));
+      }
       return reply.redirect('/');
     });
   }

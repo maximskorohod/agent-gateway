@@ -6,6 +6,8 @@ export const DEMO_CREDENTIAL_ID = 'demo';
 export const DEMO_AGENT_ID = 'demo-agent';
 /** Публичный демо-ключ: общий для всех посетителей, ничего не открывает (мок в процессе). Формат — keyPattern провайдера demo. */
 export const DEMO_KEY = 'demo-public01';
+/** Формат ключа посетителя: совпадает с keyPattern провайдера demo в providers.yaml. */
+export const DEMO_KEY_PATTERN = /^demo-[a-z0-9]{8,32}$/;
 export const DEMO_CHECK_SEC = 30;
 
 /**

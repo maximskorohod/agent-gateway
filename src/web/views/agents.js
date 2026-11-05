@@ -1,5 +1,5 @@
 // Экран агентов: список, привязка ключей, создание, токен (показывается один раз).
-import { html, raw, form, layout, enc, fmtDate, th, keyName } from './html.js';
+import { html, raw, form, layout, enc, fmtDate, th, keyName, isDemo } from './html.js';
 import { t } from '../../i18n.js';
 
 const chk = (cond) => (cond ? raw(' checked') : '');
@@ -42,13 +42,13 @@ function agentRow(a, csrf, credentials, ids, providers) {
         </div>
         <div class="actions">
           <a class="btn" href="/stats?agent=${id}">${t('nav.activity')}</a>
-          ${a.enabled
+          ${isDemo() ? '' : html`${a.enabled
             ? form(`/agents/${id}/disable`, html`<button class="btn" type="submit">${t('agents.disable')}</button>`, csrf)
             : form(`/agents/${id}/enable`, html`<button class="btn primary" type="submit">${t('agents.enable')}</button>`, csrf)}
           <details class="fold inline-fold">
             <summary>${t('agents.delete')}</summary>
             ${form(`/agents/${id}/delete`, html`<button class="btn btn-danger" type="submit">${t('agents.delete_agent')}</button>`, csrf)}
-          </details>
+          </details>`}
         </div>
       </div>
       <details class="fold">

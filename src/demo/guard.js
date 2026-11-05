@@ -12,7 +12,7 @@ import { errorPage } from '../web/views/error.js';
 import { clientKey } from '../web/client-key.js';
 import { t } from '../i18n.js';
 import { createDemoMock, DEMO_HOST } from './mock.js';
-import { createDemoReset, DEMO_CREDENTIAL_ID } from './reset.js';
+import { createDemoReset, DEMO_CREDENTIAL_ID, DEMO_KEY_PATTERN } from './reset.js';
 
 export { createDemoMock, createDemoReset };
 
@@ -72,10 +72,21 @@ export async function assertDemoIsolation({ cfg, db, vault, env = process.env, r
   if (typeof vault.names !== 'function') refuse('vault_not_enumerable');
   const names = await vault.names();
   if (names.some((n) => n === 'sys/slack_webhook' || n === 'sys/smtp' || n.startsWith('sys/tg'))) refuse('vault_channel_secret');
-  const foreign = names.filter((n) => !n.startsWith('sys/') && n !== `cred/${DEMO_CREDENTIAL_ID}`);
+  const store = repo ?? createRepo(db, { demo: true });
+  // Ключ, добавленный посетителем до перезапуска: запись провайдера demo в базе и значение формата demo-…; сброс на старте его удалит
+  const isVisitorKey = async (n) => {
+    const m = /^cred\/([A-Za-z0-9_-]{1,64})$/.exec(n);
+    if (!m || store.getCredential(m[1])?.provider !== 'demo') return false;
+    return DEMO_KEY_PATTERN.test(String(await vault.get(n)));
+  };
+  const foreign = [];
+  for (const n of names) {
+    if (n.startsWith('sys/') || n === `cred/${DEMO_CREDENTIAL_ID}`) continue;
+    if (!(await isVisitorKey(n))) foreign.push(n);
+  }
   if (foreign.length) refuse('vault_foreign_name', foreign.filter((n) => /^cred\/[A-Za-z0-9_-]{1,64}$/.test(n)).join(' '));
   // 4. база: ни одного чужого ключа (даже удалённого), Telegram, каналов, пароля владельца
-  const facts = (repo ?? createRepo(db, { demo: true })).demoIsolationFacts();
+  const facts = store.demoIsolationFacts();
   if (facts.foreignCredentialIds.length) refuse('db_foreign_credential', facts.foreignCredentialIds.map((id) => `cred/${id}`).join(' '));
   if (facts.ownerTelegram) refuse('db_owner_telegram');
   if (facts.notifyMeta) refuse('db_notify_settings');

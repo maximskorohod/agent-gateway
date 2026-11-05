@@ -297,4 +297,4 @@ Loading: save it as `/etc/nftables-demo.conf`, check it with `nft -c -f /etc/nft
 
 Check as that user: `sudo -u gateway curl -m 5 -sS https://example.com` must fail, and `curl -s https://demo.example.com/healthz` from outside must answer.
 
-Not verified on a live server: neither the systemd directives, nor the nftables rules, nor running the gateway in demo mode on a VPS. A unit with `SystemCallFilter` and `IPAddressDeny` together has not been tried either.
+Checked on a VPS with a separate unit bound to loopback: the gateway starts and restarts in demo mode, and a process with `IPAddressDeny=any` and `IPAddressAllow=localhost` cannot reach outside. Not verified on a live server: the nftables rules, a demo at a public address behind Caddy, and a unit with `SystemCallFilter` and `IPAddressDeny` together.

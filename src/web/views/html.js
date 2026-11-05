@@ -34,6 +34,9 @@ export function setDemoMode(on) {
   DEMO = Boolean(on);
 }
 
+/** Демо-режим включён: экраны скрывают кнопки маршрутов, закрытых allowlist-ом. */
+export const isDemo = () => DEMO;
+
 /** Ссылка на лист ожидания или пустая строка; без скриптов и параметров. */
 export function waitlistLink() {
   return WAITLIST ? html`<a class="waitlist" href="${WAITLIST}" rel="noopener noreferrer" target="_blank">${t('cloud.waitlist')}</a>` : '';

@@ -19,7 +19,7 @@ import { sha256hex } from '../src/core/access.js';
 import { loadCatalog } from '../src/catalog.js';
 import { initI18n } from '../src/i18n.js';
 import { assertDemoIsolation, assertDemoDataDirFresh, createDemoTransport, createDemoMock, DEMO_MARKER } from '../src/demo/guard.js';
-import { DEMO_KEY } from '../src/demo/reset.js';
+import { DEMO_KEY, DEMO_KEY_PATTERN } from '../src/demo/reset.js';
 
 initI18n('en');
 
@@ -47,7 +47,7 @@ async function boot(extra = {}) {
   cleanup.push(() => app.stop());
   const base = `http://127.0.0.1:${app.fastify.server.address().port}`;
   const jar = new Map();
-  const c = { app, base, token: '', ip: `10.9.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` };
+  const c = { app, base, dataDir, token: '', ip: `10.9.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` };
   const store = (res) => { for (const s of res.headers.getSetCookie?.() || []) { const [kv, ...attrs] = s.split(';'); const [k, v] = kv.split('='); if (attrs.some((a) => /max-age=0/i.test(a))) jar.delete(k); else jar.set(k, v); } };
   const cookie = () => [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
   const headers = (more = {}) => ({ cookie: cookie(), 'x-forwarded-for': c.ip, ...more });
@@ -126,6 +126,92 @@ test('1. изоляция: ключ другого провайдера в ба�
   await assert.rejects(deleted.run, /demo_isolation: db_foreign_credential cred\/bx2$/);
   const demoOnly = await isolation(({ repo }) => addCred(repo, 'demo', 'demo'));
   await demoOnly.run(); // ключ провайдера demo — не повод для отказа
+});
+
+test('1. изоляция: ключ посетителя проходит только с записью demo в базе и значением формата demo-…', async () => {
+  const value = 'demo-' + crypto.randomBytes(5).toString('hex');
+  const visitor = await isolation(async ({ repo, vault }) => { addCred(repo, 'v1', 'demo'); await vault.put('cred/v1', value); });
+  await visitor.run();
+  // запись demo есть, но значение похоже на настоящий ключ: отказ, значения в тексте нет
+  const secret = ['sk', 'live', crypto.randomBytes(6).toString('hex')].join('_');
+  const real = await isolation(async ({ repo, vault }) => { addCred(repo, 'v2', 'demo'); await vault.put('cred/v2', secret); });
+  await assert.rejects(real.run, (e) => { assert.match(e.message, /^demo_isolation: vault_foreign_name cred\/v2$/); assert.ok(!e.message.includes(secret)); return true; });
+  // значение верного формата без записи в базе: отказ
+  const orphan = await isolation(async ({ vault }) => { await vault.put('cred/v3', value); });
+  await assert.rejects(orphan.run, /demo_isolation: vault_foreign_name cred\/v3$/);
+});
+
+test('1. перезапуск после ключа посетителя: демо стартует, сброс убирает ключ', async () => {
+  const c = await boot(); await c.login();
+  await c.get('/keys/new/demo');
+  const added = await c.post('/keys/new/demo', { key: 'demo-' + crypto.randomBytes(5).toString('hex'), mode: 'ask', approval: 'web_button', max_ttl: '3600', max_calls: '100', max_parallel: '2' });
+  assert.equal(added.status, 302);
+  assert.equal(c.app.repo.listCredentials().length, 2);
+  await c.app.stop();
+  const again = await buildApp({ ...paths(c.dataDir), demo: true, dataDirExplicit: true, prodHosts: [], env: {}, lang: 'en', port: 0, host: '127.0.0.1', publicUrl: 'http://127.0.0.1', logLevel: 'silent' });
+  cleanup.push(() => again.stop());
+  assert.deepEqual(again.repo.listCredentials().map((x) => x.id), ['demo']);
+});
+
+test('3. сценарий демо: Simulate, Approve, curl с рабочим пропуском', async () => {
+  const c = await boot(); await c.login();
+  let home = await c.get('/');
+  assert.match(home.text2, /Try it in 3 steps/);
+  assert.match(home.text2, /action="\/demo\/simulate"/);
+  assert.doesNotMatch(home.text2, /id="demo-curl"/);
+  assert.equal((await c.post('/demo/simulate')).status, 302);
+  home = await c.get('/');
+  const id = home.text2.match(/class="btn primary" href="\/requests\/([^"]+)"/)?.[1];
+  assert.ok(id, 'шаг 2: ссылка на свою заявку');
+  assert.doesNotMatch(home.text2, /id="demo-curl"/, 'до одобрения пропуска нет');
+  await c.get(`/requests/${id}`);
+  assert.equal((await c.post(`/requests/${id}/approve`)).status, 302);
+  home = await c.get('/');
+  const code = home.text2.match(/<code id="demo-curl">([^<]+)<\/code>/)?.[1];
+  assert.ok(code, 'шаг 3: команда curl на главной');
+  const cmd = code.replace(/&quot;/g, '"');
+  assert.ok(cmd.includes('http://127.0.0.1/v1/proxy/demo/deals'), 'адрес из publicUrl');
+  const token = cmd.match(/Bearer (gwt_[^"]+)"/)?.[1];
+  assert.ok(token, 'в команде пропуск');
+  assert.ok(!cmd.includes('demo-public01'), 'ключа в команде нет');
+  const r = await c.api('GET', '/v1/proxy/demo/deals', { token });
+  assert.equal(r.status, 200);
+  assert.ok((await r.json()).result.length > 0);
+  // другая сессия чужого пропуска не видит
+  const other = await boot(); await other.login();
+  assert.doesNotMatch((await other.get('/')).text2, /id="demo-curl"/);
+  // отказ возвращает к шагу 1
+  await c.post('/demo/simulate');
+  home = await c.get('/');
+  const id2 = home.text2.match(/class="btn primary" href="\/requests\/([^"]+)"/)?.[1];
+  await c.get(`/requests/${id2}`);
+  await c.post(`/requests/${id2}/deny`);
+  assert.doesNotMatch((await c.get('/')).text2, /id="demo-curl"/);
+});
+
+test('3. экраны демо без кнопок, закрытых allowlist-ом, и без текстов про код', async () => {
+  const c = await boot(); await c.login();
+  const key = (await c.get('/keys/demo')).text2;
+  for (const a of ['/keys/demo/preview', '/keys/demo/replace', '/keys/demo/delete']) assert.ok(!key.includes(`action="${a}"`), a);
+  assert.doesNotMatch(key, /fresh code/);
+  assert.doesNotMatch(key, /you get a notification/);
+  assert.doesNotMatch(key, /value="web_code"/);
+  assert.match(key, /<input type="hidden" name="approval" value="web_button">/);
+  const agents = (await c.get('/agents')).text2;
+  for (const a of ['disable', 'enable', 'delete']) assert.ok(!agents.includes(`/agents/demo-agent/${a}"`), a);
+  assert.match(agents, /action="\/agents\/demo-agent\/keys"/, 'привязка ключей остаётся');
+  assert.doesNotMatch((await c.get('/audit')).text2, /href="\/settings"/);
+  assert.doesNotMatch((await c.get('/keys/new/demo')).text2, /value="web_code"/);
+  // все оставшиеся формы и ссылки экранов не ведут в 404
+  for (const p of ['/', '/keys/demo', '/keys/new/demo', '/agents', '/audit', '/stats']) {
+    const page = (await c.get(p)).text2;
+    for (const m of page.matchAll(/<a [^>]*href="(\/[^"#]*)"/g)) assert.notEqual((await c.get(m[1].replace(/&amp;/g, '&'))).status, 404, `${p} → ${m[1]}`);
+  }
+});
+
+test('1. формат ключа посетителя совпадает с каталогом', () => {
+  const demo = loadCatalog(path.join(root, 'providers.yaml'), { demo: true }).get('demo');
+  assert.equal(String(demo.keyPattern.source ?? demo.keyPattern), DEMO_KEY_PATTERN.source);
 });
 
 test('1. изоляция: sys/smtp, sys/slack_webhook, sys/tg_bot в сейфе → отказ без значений', async () => {

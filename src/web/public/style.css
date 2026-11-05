@@ -200,6 +200,16 @@ code { word-break: break-all; }
 /* Баннер демо-режима (GW_DEMO=1) */
 .demo-banner { background: var(--warn-bg); color: var(--warn-fg); border-bottom: 1px solid var(--warn-border); text-align: center; padding: 8px 16px; font-size: 0.9rem; }
 .demo-banner a { color: inherit; font-weight: 600; margin-left: 8px; }
+/* Сценарий демо из трёх шагов на главной */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.steps > li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; }
+.step-num { width: 24px; height: 24px; border-radius: 99px; display: grid; place-items: center; font-size: 0.8rem; font-weight: 700; background: var(--sunken); color: var(--muted); }
+.steps > li.on .step-num { background: var(--accent); color: var(--accent-fg); }
+.steps > li.todo .title, .steps > li.done .title { color: var(--muted); }
+.step-body { min-width: 0; }
+.step-body .title { font-weight: 600; }
+.step-body p { margin: 4px 0 8px; }
+.demo-steps .token-box code { padding: 10px; font-size: 0.8rem; overflow-wrap: anywhere; }
 
 /* Экраны без меню (вход, код, настройка, заявка): одна белая карточка по центру. */
 .bare { background: linear-gradient(var(--band), var(--band) 42vh, var(--bg) 42vh); }

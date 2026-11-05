@@ -297,4 +297,4 @@ table inet agw_demo {
 
 Проверка из-под пользователя: `sudo -u gateway curl -m 5 -sS https://example.com` должна завершиться ошибкой, а `curl -s https://demo.example.com/healthz` снаружи отвечать.
 
-Не проверено на живом сервере: ни systemd-директивы, ни правила nftables, ни запуск шлюза в демо-режиме на VPS. Юнит с `SystemCallFilter` и `IPAddressDeny` вместе тоже не пробовался.
+Проверено на VPS отдельным юнитом на loopback: шлюз запускается и перезапускается в демо-режиме, процесс с `IPAddressDeny=any` и `IPAddressAllow=localhost` наружу не выходит. Не проверено на живом сервере: правила nftables, демо по публичному адресу за Caddy, юнит с `SystemCallFilter` и `IPAddressDeny` вместе.

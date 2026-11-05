@@ -1,5 +1,5 @@
 // Экран «Настройки», страница привязки Telegram и журнал аудита.
-import { html, form, layout, fmtDate, raw, th } from './html.js';
+import { html, form, layout, fmtDate, raw, th, isDemo } from './html.js';
 import { t, hasKey } from '../../i18n.js';
 
 function sessionRow(s) {
@@ -209,6 +209,6 @@ export function auditPage({ rows = [], csrf } = {}) {
           </table>
         </div>`
       : html`<p class="empty">${t('audit.empty')}</p>`}
-    <p><a href="/settings">${t('audit.back')}</a></p>
+    ${isDemo() ? '' : html`<p><a href="/settings">${t('audit.back')}</a></p>`}
   `, { csrf });
 }
