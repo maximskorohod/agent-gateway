@@ -25,6 +25,10 @@ export const sessionPlugin = fp(async function (fastify, { repo, secure, demo = 
   fastify.addHook('onRequest', async (req) => {
     const sid = req.cookies?.[COOKIE];
     if (!sid) return;
+    // №10: статика и healthz не читают и не продлевают сессию — поток картинок и пингов
+    // не должен продлевать cookie и писать в базу на каждый запрос.
+    const p = req.url.split('?', 1)[0];
+    if (p === '/healthz' || p.startsWith('/public/')) return;
     const idHash = hashSessionId(sid);
     const s = repo.getSession(idHash);
     if (!s) return;

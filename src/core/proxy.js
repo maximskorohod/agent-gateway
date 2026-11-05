@@ -291,6 +291,16 @@ export function createProxy({ repo, catalog, vault, grants, access, limits, logg
         if (!checkJsonDepth(raw)) return failAfter(502, 'filtered_too_deep');
         let json;
         try { json = JSON.parse(raw.toString('utf8')); } catch { return failAfter(502, 'filtered_non_json'); }
+        // №12: строковые значения вычищаем от секрета ДО filterBody. Обрезка длинного поля
+        // (maxFieldLen) и маска режут строку и могут разрезать секрет посередине, тогда после
+        // фильтра он целиком уже не найдётся и его часть ушла бы агенту.
+        const scrub = (v) => {
+          if (typeof v === 'string') return redactText(v, forms);
+          if (Array.isArray(v)) { for (let i = 0; i < v.length; i++) v[i] = scrub(v[i]); return v; }
+          if (v && typeof v === 'object') { for (const k of Object.keys(v)) v[k] = scrub(v[k]); return v; }
+          return v;
+        };
+        scrub(json);
         const f = flt.filterBody(json, decodedPath, method);
         if (flt.enabled) removed = f.removed;
         if (flt.mask) masked = f.masked;

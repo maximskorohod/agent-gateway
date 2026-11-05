@@ -16,9 +16,10 @@ const DEALS = [
   { ID: '4', TITLE: 'Data migration', STAGE_ID: 'LOSE', OPPORTUNITY: '7500', CURRENCY_ID: 'EUR', COMMENTS: 'Went with another vendor', CONTACT_ID: '1' },
 ];
 const CONTACTS = [
-  { ID: '1', NAME: 'Alice', LAST_NAME: 'Example', PHONE: '+1 555 0100', EMAIL: 'alice@example.invalid', COMMENTS: 'Prefers e-mail' },
+  // Телефоны с "+" и не короче 10 цифр: маска персональных данных (№11) на них срабатывает.
+  { ID: '1', NAME: 'Alice', LAST_NAME: 'Example', PHONE: '+1 555 010 0100', EMAIL: 'alice@example.invalid', COMMENTS: 'Prefers e-mail' },
   { ID: '2', NAME: 'Bob', LAST_NAME: 'Sample', PHONE: '+1 (555) 010-0111', EMAIL: 'bob@example.invalid', COMMENTS: 'Card on file 4111 1111 1111 1111 (fake)' },
-  { ID: '3', NAME: 'Carol', LAST_NAME: 'Demo', PHONE: '+1 555 0122', EMAIL: 'carol@example.invalid', COMMENTS: '' },
+  { ID: '3', NAME: 'Carol', LAST_NAME: 'Demo', PHONE: '+1 555 010 0122', EMAIL: 'carol@example.invalid', COMMENTS: '' },
 ];
 const TABLES = { deals: DEALS, contacts: CONTACTS };
 
