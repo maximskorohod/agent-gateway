@@ -3,10 +3,12 @@
 #
 # Run as root:
 #   sudo ./setup.sh --domain gw.example.com [--repo URL] [--branch BRANCH_OR_TAG] [--vault ssm|file] [--region eu-central-1]
+#   sudo ./setup.sh --domain demo.example.com --demo --prod-hosts gw.example.com
 #
 # The script is idempotent: a repeated run pulls the code from git, rebuilds dependencies,
 # rewrites the configs from the repository and restarts the services. At the end it runs
 # `gateway init`, which prints a one-time setup wizard link (valid for 15 minutes).
+# In demo mode (--demo) the wizard, the backup cron and the master `gateway init` do not run.
 set -euo pipefail
 
 # ---------- constants ----------
@@ -14,10 +16,16 @@ readonly APP_USER="gateway"
 readonly APP_HOME="/opt/agentkeygate"
 readonly APP_DIR="${APP_HOME}/app"
 readonly DATA_DIR="/var/lib/agentkeygate"
+readonly DEMO_DATA_DIR="/var/lib/agentkeygate-demo"
 readonly BACKUP_DIR="/var/backups/agentkeygate"
 readonly ETC_DIR="/etc/agentkeygate"
 readonly ENV_FILE="${ETC_DIR}/env"
+# The previous env file is read to keep the demo mode and the GW_* variables the script does not
+# manage. GW_SETUP_ENV_FILE overrides the path (tests of --print-env without root).
+readonly OLD_ENV_FILE="${GW_SETUP_ENV_FILE:-${ETC_DIR}/env}"
 readonly GW_PORT="8080"
+# A domain name without anchors: the anchors are added where it is used (single value or a comma separated list).
+readonly DOMAIN_RE='[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+'
 # Authenticated Origin Pulls (Cloudflare mode): the operator places the CA file, the script does not download it.
 readonly CF_CA_FILE="/etc/caddy/cloudflare-origin-pull-ca.pem"
 # SHA-256 of the global AOP CA (developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem,
@@ -33,6 +41,7 @@ usage() {
   cat <<'USAGE'
 Usage:
   sudo ./setup.sh --domain gw.example.com [--repo URL] [--branch BRANCH] [--vault ssm|file] [--region REGION]
+  sudo ./setup.sh --domain demo.example.com --demo --prod-hosts gw.example.com
 
   --domain   required; the domain whose A record points to the Elastic IP (Cloudflare: grey cloud)
   --repo     git repository (default: https://github.com/maximskorohod/agentkeygate.git)
@@ -40,6 +49,15 @@ Usage:
   --branch   branch or tag (default: the release this script belongs to)
   --vault    ssm (default, production: keys in AWS SSM via the IAM role) or file (tests only)
   --region   AWS region for SSM (default: eu-central-1)
+  --demo     demo instance (GW_DEMO=1): file vault, data in /var/lib/agentkeygate-demo,
+             network closed to loopback (systemd drop-in and the agw_demo nftables table),
+             no backup cron, no setup wizard. Requires --prod-hosts.
+  --prod-hosts a.example.com,b.example.com
+             host names of the production gateway, comma separated; a guard against starting
+             the demo with a production address (GW_PROD_HOSTS)
+  --print-env
+             print the resulting GW_* environment to stdout and exit 0 before the root check
+             and before any change
   --behind-cloudflare  the domain is proxied by Cloudflare (orange cloud, SSL Full strict):
              Caddy takes the client IP from CF-Connecting-IP, nftables lets 80/443 in only from Cloudflare addresses.
              Cloudflare then sees the traffic, including keys in requests. Enables Authenticated Origin Pulls:
@@ -64,6 +82,44 @@ run_as_gw() {
   )
 }
 
+# ---------- env file content ----------
+# The script manages a fixed set of GW_* variables and writes them anew on every run. Any other
+# GW_* line found in the previous env file (GW_LANG, GW_TZ, GW_TRUST_PROXY, GW_WAITLIST_URL, ...)
+# is carried over unchanged. In demo mode the managed lines are written for the demo instance:
+# GW_VAULT_PREFIX and GW_SSM_REGION are not written at all.
+MANAGED_RE='^GW_(DATA_DIR|PORT|HOST|PUBLIC_URL|VAULT|VAULT_PREFIX|SSM_REGION|LOG_LEVEL|DEMO|PROD_HOSTS)='
+
+carried_gw_lines() {
+  [[ -r "$OLD_ENV_FILE" ]] || return 0
+  grep -E '^GW_[A-Z0-9_]+=' "$OLD_ENV_FILE" 2>/dev/null | grep -Ev "$MANAGED_RE" || true
+}
+
+# The value of one GW_ variable from the previous env file; empty when the file is missing.
+old_gw_value() {
+  [[ -r "$OLD_ENV_FILE" ]] || return 0
+  grep -E "^${1}=" "$OLD_ENV_FILE" 2>/dev/null | head -n 1 | cut -d= -f2-
+}
+
+# The final env on stdout: managed lines anew, unknown GW_* carried over (I-03).
+build_env() {
+  if [[ "$DEMO" -eq 1 ]]; then
+    echo "GW_DEMO=1"
+    echo "GW_DATA_DIR=${DEMO_DATA_DIR}"
+    echo "GW_VAULT=file"
+    echo "GW_PROD_HOSTS=${PROD_HOSTS}"
+  else
+    echo "GW_DATA_DIR=${DATA_DIR}"
+    echo "GW_VAULT=${VAULT}"
+    echo "GW_VAULT_PREFIX=/gateway"
+    echo "GW_SSM_REGION=${REGION}"
+  fi
+  echo "GW_PORT=${GW_PORT}"
+  echo "GW_HOST=127.0.0.1"
+  echo "GW_PUBLIC_URL=https://${DOMAIN}"
+  echo "GW_LOG_LEVEL=info"
+  carried_gw_lines
+}
+
 # ---------- argument parsing ----------
 DOMAIN=""
 REPO="https://github.com/maximskorohod/agentkeygate.git"
@@ -73,14 +129,21 @@ VAULT="ssm"
 REGION="eu-central-1"
 BEHIND_CF=0
 FORCE_INIT=0
+DEMO=0
+PRINT_ENV=0
+PROD_HOSTS=""
+VAULT_SET=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --domain) [[ $# -ge 2 ]] || die "--domain requires a value"; DOMAIN="$2"; shift 2 ;;
     --repo)   [[ $# -ge 2 ]] || die "--repo requires a value";   REPO="$2";   shift 2 ;;
     --branch) [[ $# -ge 2 ]] || die "--branch requires a value"; BRANCH="$2"; shift 2 ;;
-    --vault)  [[ $# -ge 2 ]] || die "--vault requires a value";  VAULT="$2";  shift 2 ;;
+    --vault)  [[ $# -ge 2 ]] || die "--vault requires a value";  VAULT="$2"; VAULT_SET=1; shift 2 ;;
     --region) [[ $# -ge 2 ]] || die "--region requires a value"; REGION="$2"; shift 2 ;;
+    --demo) DEMO=1; shift ;;
+    --prod-hosts) [[ $# -ge 2 ]] || die "--prod-hosts requires a value"; PROD_HOSTS="$2"; shift 2 ;;
+    --print-env) PRINT_ENV=1; shift ;;
     --behind-cloudflare) BEHIND_CF=1; shift ;;
     --cf-ca-sha256) [[ $# -ge 2 ]] || die "--cf-ca-sha256 requires a value"; CF_CA_SHA256="$2"; shift 2 ;;
     --init) FORCE_INIT=1; shift ;;
@@ -89,11 +152,21 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ---------- checks ----------
-[[ $EUID -eq 0 ]] || die "run the script as root: sudo ./setup.sh --domain ..."
+# ---------- previous installation: keep the demo mode, read unmanaged GW_* ----------
+# A repeated run without --demo stays in demo mode when the previous env says GW_DEMO=1 (I-03).
+if [[ "$DEMO" -eq 0 ]]; then
+  case "$(old_gw_value GW_DEMO | tr '[:upper:]' '[:lower:]')" in
+    1|true|on) DEMO=1 ;;
+  esac
+fi
+# Demo: the production host list comes from --prod-hosts or stays as it was (a repeated run keeps it).
+if [[ "$DEMO" -eq 1 && -z "$PROD_HOSTS" ]]; then
+  PROD_HOSTS="$(old_gw_value GW_PROD_HOSTS)"
+fi
+
+# ---------- checks (all before any change; --print-env passes here without root) ----------
 [[ -n "$DOMAIN" ]] || { usage; die "--domain is not set"; }
-[[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]] \
-  || die "invalid domain: $DOMAIN"
+[[ "$DOMAIN" =~ ^$DOMAIN_RE$ ]] || die "invalid domain: $DOMAIN"
 # A local path is for a private repository: the code is pushed to the server over ssh
 # into a bare repository, so the server does not store GitHub tokens.
 [[ "$REPO" =~ ^https://[^[:space:]]+$ || "$REPO" =~ ^/[^[:space:]]+$ ]] \
@@ -106,11 +179,34 @@ case "$VAULT" in
   *) die "--vault must be ssm or file" ;;
 esac
 [[ "$REGION" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]+$ ]] || die "invalid region: $REGION"
+if [[ -n "$PROD_HOSTS" ]]; then
+  # One check for the whole list: an empty entry, a stray comma or a space would sneak through a per-entry loop.
+  [[ "$PROD_HOSTS" =~ ^$DOMAIN_RE(,$DOMAIN_RE)*$ ]] \
+    || die "invalid --prod-hosts: ${PROD_HOSTS} (comma separated domain names)"
+elif [[ "$DEMO" -eq 1 ]]; then
+  die "demo mode needs --prod-hosts: the comma separated host names of the production gateway"
+fi
+if [[ "$DEMO" -eq 1 ]]; then
+  # Refusals before any change: the demo holds no real keys and runs no setup wizard.
+  # The demo vault is the file vault by definition; an explicit --vault ssm is a mistake, not a default.
+  if [[ "$VAULT_SET" -eq 1 ]]; then
+    [[ "$VAULT" != "ssm" ]] || die "--demo uses the file vault only: drop --vault ssm"
+  fi
+  VAULT="file"
+  [[ "$FORCE_INIT" -eq 0 ]] || die "--demo does not run the setup wizard: drop --init"
+fi
 if [[ "$BEHIND_CF" -eq 1 ]]; then
   [[ "$CF_CA_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] \
     || die "Cloudflare CA fingerprint is not set: check the file against the official Cloudflare page and pass --cf-ca-sha256 <sha256>"
 fi
 
+# ---------- --print-env: the final env on stdout, exit 0, before the root check and any change ----------
+if [[ "$PRINT_ENV" -eq 1 ]]; then
+  build_env
+  exit 0
+fi
+
+[[ $EUID -eq 0 ]] || die "run the script as root: sudo ./setup.sh --domain ..."
 # shellcheck disable=SC1091
 . /etc/os-release
 case "${ID}:${VERSION_ID:-}" in
@@ -269,34 +365,41 @@ step "Dependencies (npm, production only, no install scripts, as user ${APP_USER
 
 # ---------- 7. data directories ----------
 step "Data directories"
-install -d -m 0700 -o "$APP_USER" -g "$APP_USER" "$DATA_DIR"
-install -d -m 0700 -o root -g root "$BACKUP_DIR"
+if [[ "$DEMO" -eq 1 ]]; then
+  install -d -m 0700 -o "$APP_USER" -g "$APP_USER" "$DEMO_DATA_DIR"
+else
+  install -d -m 0700 -o "$APP_USER" -g "$APP_USER" "$DATA_DIR"
+  install -d -m 0700 -o root -g root "$BACKUP_DIR"
+fi
 
 # ---------- 8. gateway env file ----------
 step "Configuration ${ENV_FILE} (0600)"
 install -d -m 0755 -o root -g root "$ETC_DIR"
 env_tmp="$(mktemp "${ETC_DIR}/env.XXXXXX")"
-cat > "$env_tmp" <<ENV
-# Gateway environment variables (read by systemd via EnvironmentFile). Created by setup.sh.
-GW_DATA_DIR=${DATA_DIR}
-GW_PORT=${GW_PORT}
-GW_HOST=127.0.0.1
-GW_PUBLIC_URL=https://${DOMAIN}
-GW_VAULT=${VAULT}
-GW_VAULT_PREFIX=/gateway
-GW_SSM_REGION=${REGION}
-GW_LOG_LEVEL=info
-ENV
+{
+  echo "# Gateway environment variables (read by systemd via EnvironmentFile). Created by setup.sh."
+  build_env
+} > "$env_tmp"
 chmod 0600 "$env_tmp"
 chown root:root "$env_tmp"
 mv -f "$env_tmp" "$ENV_FILE"
-if [[ "$VAULT" == "file" ]]; then
+if [[ "$DEMO" -eq 1 ]]; then
+  echo "    demo mode: file vault, data in ${DEMO_DATA_DIR}, resets hourly"
+elif [[ "$VAULT" == "file" ]]; then
   echo "    WARNING: --vault file stores keys in a file on disk. Use it for tests only."
 fi
 
 # ---------- 9. gateway systemd unit ----------
 step "systemd: gateway.service"
 install -m 0644 -o root -g root "$APP_DIR/deploy/gateway.service" /etc/systemd/system/gateway.service
+install -d -m 0755 -o root -g root /etc/systemd/system/gateway.service.d
+if [[ "$DEMO" -eq 1 ]]; then
+  step "systemd: demo drop-in (no IP traffic beyond loopback, writes only to the demo data directory)"
+  install -m 0644 -o root -g root "$APP_DIR/deploy/gateway-demo.conf" /etc/systemd/system/gateway.service.d/demo.conf
+else
+  # Not in demo mode: a leftover demo drop-in would keep the network closed for a production gateway.
+  rm -f /etc/systemd/system/gateway.service.d/demo.conf
+fi
 systemctl daemon-reload
 
 # ---------- 10. Caddy: config with the domain ----------
@@ -321,20 +424,37 @@ chown -R caddy:caddy /var/log/caddy
 
 # ---------- 11. nftables ----------
 step "nftables: checking and installing /etc/nftables.conf"
+# Demo: the separate agw_demo table (outbound traffic of the gateway user only over loopback)
+# is installed first, so the include in the main config resolves during the nft -c check.
+if [[ "$DEMO" -eq 1 ]]; then
+  step "nftables: demo table agw_demo in /etc/nftables-demo.conf"
+  install -m 0644 -o root -g root "$APP_DIR/deploy/nftables-demo.conf" /etc/nftables-demo.conf
+  nft -c -f /etc/nftables-demo.conf
+fi
 # The "#ssm" line (IMDS for the IAM role) is needed only for the ssm vault; with the file vault the metadata address stays closed.
 if [[ "$VAULT" == "ssm" ]]; then
   render_cf "$APP_DIR/deploy/nftables.conf" | sed -e 's/[[:space:]]*#ssm$//' > /etc/nftables.conf.new
 else
   render_cf "$APP_DIR/deploy/nftables.conf" | sed -e '/#ssm$/d' > /etc/nftables.conf.new
 fi
+# Demo: the main config starts with flush ruleset, so the demo table is loaded with an include
+# line added at every run (the config is rewritten from the repository each time).
+if [[ "$DEMO" -eq 1 ]] && ! grep -q 'include "/etc/nftables-demo.conf"' /etc/nftables.conf.new; then
+  echo 'include "/etc/nftables-demo.conf"' >> /etc/nftables.conf.new
+fi
 nft -c -f /etc/nftables.conf.new
 chmod 0644 /etc/nftables.conf.new
 mv -f /etc/nftables.conf.new /etc/nftables.conf
 
 # ---------- 12. backups ----------
-step "Backups: cron and script"
-install -m 0644 -o root -g root "$APP_DIR/deploy/backup.cron" /etc/cron.d/agentkeygate
-bash -n "$APP_DIR/scripts/backup.sh"
+if [[ "$DEMO" -eq 1 ]]; then
+  step "Backups: none in demo mode (no real data, reset hourly); a leftover cron is removed"
+  rm -f /etc/cron.d/agentkeygate
+else
+  step "Backups: cron and script"
+  install -m 0644 -o root -g root "$APP_DIR/deploy/backup.cron" /etc/cron.d/agentkeygate
+  bash -n "$APP_DIR/scripts/backup.sh"
+fi
 
 # ---------- 13. starting services ----------
 step "Enabling and restarting nftables, chrony, caddy, gateway"
@@ -365,6 +485,13 @@ fi
 echo "    gateway is responding"
 
 # ---------- 15. setup wizard ----------
+# Demo: gateway init does not run (the demo seeds itself; the wizard would create an owner password).
+if [[ "$DEMO" -eq 1 ]]; then
+  step "Demo mode: gateway init is not run"
+  echo
+  echo "Done. Demo gateway: https://${DOMAIN} (data resets hourly; see docs/DEPLOY.md, section 10)."
+  exit 0
+fi
 # gateway init resets the password, 2FA and sessions, so after the wizard is completed
 # a repeated setup.sh run does not call it (only with --init).
 setup_done="$(sqlite3 -readonly "${DATA_DIR}/gw.db" 'SELECT setup_done FROM owner WHERE id = 1' 2>/dev/null || true)"

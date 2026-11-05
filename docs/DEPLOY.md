@@ -265,21 +265,37 @@ GW_PROD_HOSTS=gw.example.com
 ```
 
 - `GW_DATA_DIR` is set explicitly and the directory must be empty on first start (the gateway creates the `.demo-data` marker itself). A directory where the `gateway init` wizard has already been run will not work.
-- `GW_VAULT=file`, and none of the variables `AWS_*`, `GW_SSM_*`, `GW_VAULT_PREFIX`. The env file created by `setup.sh` contains `GW_VAULT_PREFIX` and `GW_SSM_REGION`: delete those lines for the demo.
+- `GW_VAULT=file`, and none of the variables `AWS_*`, `GW_SSM_*`, `GW_VAULT_PREFIX`. With the `--demo` installation below the script writes the env file without those lines; for a manual installation delete them from `/etc/agentkeygate/env` yourself.
 - `GW_PROD_HOSTS` lists the hosts of the production gateway, comma separated. This is insurance against starting the demo with a production address.
 - Install the demo on a separate machine, or a separate directory and user; not on a server with the production gateway.
 
-**Line 3a: systemd.** A drop-in for the demo unit (`systemctl edit gateway`):
+**Installation with `setup.sh --demo`.** Download and verify `scripts/setup.sh` as in section 2, then run:
+
+```bash
+sudo bash setup.sh --domain demo.example.com --demo --prod-hosts gw.example.com
+```
+
+On top of the usual installation (section 2) the demo run does the following:
+
+- writes the env file above: `GW_DEMO=1`, `GW_DATA_DIR=/var/lib/agentkeygate-demo`, `GW_VAULT=file`, no `GW_VAULT_PREFIX` and `GW_SSM_REGION`; creates `/var/lib/agentkeygate-demo` (mode 0700, owner `gateway`);
+- installs `deploy/gateway-demo.conf` as the drop-in `/etc/systemd/system/gateway.service.d/demo.conf` (line 3a below);
+- installs `/etc/nftables-demo.conf` (the `agw_demo` table, line 3b below), checks it with `nft -c`, and adds the line `include "/etc/nftables-demo.conf"` to `/etc/nftables.conf` at every run, so the table survives the config being rewritten from the repository;
+- does not install the backup cron and removes a leftover one, and does not run `gateway init`.
+
+A repeated run keeps demo mode even without `--demo`: the mode and `GW_PROD_HOSTS` are taken from the previous env file, and `GW_*` variables the script does not manage (`GW_LANG`, `GW_TZ`, `GW_TRUST_PROXY`, `GW_WAITLIST_URL`) are carried over unchanged. An installation whose previous env has no `GW_DEMO=1` removes a leftover `demo.conf` drop-in and behaves as before. `--print-env` prints the resulting `GW_*` environment to stdout and exits with code 0 before the root check and before any change. Refusals before any change: `--demo --vault ssm`, `--demo --init`, an invalid `--prod-hosts`, a demo without a production host list.
+
+**Line 3a: systemd.** The drop-in for the demo unit is installed by `setup.sh --demo` from `deploy/gateway-demo.conf` as `/etc/systemd/system/gateway.service.d/demo.conf`; for a manual installation use `systemctl edit gateway`:
 
 ```ini
 [Service]
 IPAddressDeny=any
 IPAddressAllow=localhost
+ReadWritePaths=/var/lib/agentkeygate-demo
 ```
 
-`IPAddressDeny=any` forbids the unit any IP traffic, `IPAddressAllow=localhost` keeps loopback, over which Caddy reaches the gateway at 127.0.0.1:8080. Check: `systemctl show gateway -p IPAddressDeny -p IPAddressAllow`.
+`IPAddressDeny=any` forbids the unit any IP traffic, `IPAddressAllow=localhost` keeps loopback, over which Caddy reaches the gateway at 127.0.0.1:8080, `ReadWritePaths` keeps the writable path inside the demo data directory. Check: `systemctl show gateway -p IPAddressDeny -p IPAddressAllow`.
 
-**Line 3b: nftables.** A separate table with a priority earlier than the rules from `deploy/nftables.conf`: outbound traffic from the user `gateway` is allowed only over loopback and as replies to established inbound connections, everything else is dropped.
+**Line 3b: nftables.** A separate table with a priority earlier than the rules from `deploy/nftables.conf`: outbound traffic from the user `gateway` is allowed only over loopback and as replies to established inbound connections, everything else is dropped. The table lives in `deploy/nftables-demo.conf`, installed as `/etc/nftables-demo.conf`:
 
 ```
 table inet agw_demo {
@@ -294,8 +310,8 @@ table inet agw_demo {
 }
 ```
 
-Loading: save it as `/etc/nftables-demo.conf`, check it with `nft -c -f /etc/nftables-demo.conf`, apply it with `nft -f /etc/nftables-demo.conf`. To make the rules survive a reboot, include the file with the line `include "/etc/nftables-demo.conf"` in `/etc/nftables.conf`. Note that `deploy/nftables.conf` starts with `flush ruleset` and a repeated `setup.sh` overwrites the config: restore the `include` line afterwards.
+`setup.sh --demo` checks the file with `nft -c -f /etc/nftables-demo.conf` and adds the line `include "/etc/nftables-demo.conf"` to `/etc/nftables.conf` at every run (`deploy/nftables.conf` starts with `flush ruleset`, and a repeated `setup.sh` rewrites the config: the script restores the `include` line itself). For a manual installation: check with `nft -c -f /etc/nftables-demo.conf`, apply with `nft -f /etc/nftables-demo.conf`, and add the `include` line to `/etc/nftables.conf` yourself.
 
 Check as that user: `sudo -u gateway curl -m 5 -sS https://example.com` must fail, and `curl -s https://demo.example.com/healthz` from outside must answer.
 
-Checked on a VPS with a separate unit bound to loopback: the gateway starts and restarts in demo mode, and a process with `IPAddressDeny=any` and `IPAddressAllow=localhost` cannot reach outside. Not verified on a live server: the nftables rules, a demo at a public address behind Caddy, and a unit with `SystemCallFilter` and `IPAddressDeny` together.
+Checked on a VPS with a separate unit bound to loopback: the gateway starts and restarts in demo mode, and a process with `IPAddressDeny=any` and `IPAddressAllow=localhost` cannot reach outside. Not verified on a live server: the `--demo` installation path with the `agw_demo` nftables table and the include line, a demo at a public address behind Caddy, and a unit with `SystemCallFilter` and `IPAddressDeny` together.

@@ -265,21 +265,37 @@ GW_PROD_HOSTS=gw.example.com
 ```
 
 - `GW_DATA_DIR` задаётся явно и каталог должен быть пустым при первом запуске (шлюз сам создаст маркер `.demo-data`). Каталог, где уже проходил мастер `gateway init`, не подойдёт.
-- `GW_VAULT=file`, и ни одной переменной `AWS_*`, `GW_SSM_*`, `GW_VAULT_PREFIX`. Файл env, созданный `setup.sh`, содержит `GW_VAULT_PREFIX` и `GW_SSM_REGION`: для демо удалите эти строки.
+- `GW_VAULT=file`, и ни одной переменной `AWS_*`, `GW_SSM_*`, `GW_VAULT_PREFIX`. При установке через `--demo` (ниже) скрипт пишет env-файл без этих строк; при ручной установке удалите их из `/etc/agentkeygate/env` сами.
 - `GW_PROD_HOSTS` перечисляет хосты боевого шлюза, через запятую. Это страховка от запуска демо с боевым адресом.
 - Демо ставится на отдельную машину или отдельный каталог и пользователя; не на сервер с боевым шлюзом.
 
-**Линия 3a: systemd.** Drop-in для юнита демо (`systemctl edit gateway`):
+**Установка через `setup.sh --demo`.** Скачайте и проверьте `scripts/setup.sh`, как в разделе 2, затем выполните:
+
+```bash
+sudo bash setup.sh --domain demo.example.com --demo --prod-hosts gw.example.com
+```
+
+Поверх обычной установки (раздел 2) демо-запуск делает следующее:
+
+- пишет env-файл выше: `GW_DEMO=1`, `GW_DATA_DIR=/var/lib/agentkeygate-demo`, `GW_VAULT=file`, без `GW_VAULT_PREFIX` и `GW_SSM_REGION`; создаёт `/var/lib/agentkeygate-demo` (права 0700, владелец `gateway`);
+- ставит `deploy/gateway-demo.conf` как drop-in `/etc/systemd/system/gateway.service.d/demo.conf` (линия 3a ниже);
+- ставит `/etc/nftables-demo.conf` (таблица `agw_demo`, линия 3b ниже), проверяет через `nft -c` и при каждом запуске дописывает строку `include "/etc/nftables-demo.conf"` в `/etc/nftables.conf`, чтобы таблица переживала перезапись конфига из репозитория;
+- не ставит cron бэкапа и удаляет оставшийся, и не запускает `gateway init`.
+
+Повторный запуск сохраняет демо-режим даже без флага `--demo`: режим и `GW_PROD_HOSTS` берутся из старого env-файла, а строки `GW_*`, которыми скрипт не управляет (`GW_LANG`, `GW_TZ`, `GW_TRUST_PROXY`, `GW_WAITLIST_URL`), переносятся без изменений. Установка, у которой в старом env нет `GW_DEMO=1`, удаляет оставшийся drop-in `demo.conf` и ведёт себя как раньше. `--print-env` печатает итоговые `GW_*` в stdout и завершается с кодом 0 до проверки root и любых изменений. Отказы до любых изменений: `--demo --vault ssm`, `--demo --init`, неверный `--prod-hosts`, демо без списка боевых хостов.
+
+**Линия 3a: systemd.** Drop-in для юнита демо ставится командой `setup.sh --demo` из файла `deploy/gateway-demo.conf` в `/etc/systemd/system/gateway.service.d/demo.conf`; при ручной установке используйте `systemctl edit gateway`:
 
 ```ini
 [Service]
 IPAddressDeny=any
 IPAddressAllow=localhost
+ReadWritePaths=/var/lib/agentkeygate-demo
 ```
 
-`IPAddressDeny=any` запрещает юниту любой IP-трафик, `IPAddressAllow=localhost` оставляет loopback, через который Caddy ходит к шлюзу на 127.0.0.1:8080. Проверка: `systemctl show gateway -p IPAddressDeny -p IPAddressAllow`.
+`IPAddressDeny=any` запрещает юниту любой IP-трафик, `IPAddressAllow=localhost` оставляет loopback, через который Caddy ходит к шлюзу на 127.0.0.1:8080, `ReadWritePaths` оставляет единственный путь записи внутри каталога данных демо. Проверка: `systemctl show gateway -p IPAddressDeny -p IPAddressAllow`.
 
-**Линия 3b: nftables.** Отдельная таблица с приоритетом раньше правил из `deploy/nftables.conf`: исходящее от пользователя `gateway` разрешено только через loopback и как ответы на установленные входящие соединения, остальное отбрасывается.
+**Линия 3b: nftables.** Отдельная таблица с приоритетом раньше правил из `deploy/nftables.conf`: исходящее от пользователя `gateway` разрешено только через loopback и как ответы на установленные входящие соединения, остальное отбрасывается. Таблица лежит в `deploy/nftables-demo.conf`, который ставится как `/etc/nftables-demo.conf`:
 
 ```
 table inet agw_demo {
@@ -294,7 +310,7 @@ table inet agw_demo {
 }
 ```
 
-Загрузка: сохраните как `/etc/nftables-demo.conf`, проверьте `nft -c -f /etc/nftables-demo.conf`, примените `nft -f /etc/nftables-demo.conf`. Чтобы правила переживали перезагрузку, подключите файл строкой `include "/etc/nftables-demo.conf"` в `/etc/nftables.conf`. Учтите, что `deploy/nftables.conf` начинается с `flush ruleset` и повторный запуск `setup.sh` перезапишет конфиг: после него верните строку `include`.
+`setup.sh --demo` проверяет файл через `nft -c -f /etc/nftables-demo.conf` и при каждом запуске дописывает строку `include "/etc/nftables-demo.conf"` в `/etc/nftables.conf` (`deploy/nftables.conf` начинается с `flush ruleset`, и повторный запуск `setup.sh` перезаписывает конфиг: строку `include` скрипт возвращает сам). При ручной установке: проверьте `nft -c -f /etc/nftables-demo.conf`, примените `nft -f /etc/nftables-demo.conf` и добавьте строку `include` в `/etc/nftables.conf` сами.
 
 Проверка из-под пользователя: `sudo -u gateway curl -m 5 -sS https://example.com` должна завершиться ошибкой, а `curl -s https://demo.example.com/healthz` снаружи отвечать.
 
