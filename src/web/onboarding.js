@@ -3,7 +3,7 @@
 import { readChannelMeta } from '../notify.js';
 import { t } from '../i18n.js';
 
-export const KINDS = Object.freeze(['chatgpt', 'claude-code', 'cursor', 'claude-desktop', 'script']);
+export const KINDS = Object.freeze(['chatgpt', 'claude-code', 'cursor', 'claude-desktop', 'script', 'codex', 'vscode', 'gemini', 'hermes', 'openclaw']);
 export const isKind = (k) => KINDS.includes(k);
 
 /** Имя нового агента для карточки (словарь agent_name.*). */
@@ -35,25 +35,56 @@ export const needsWelcome = (s) => s.pending && !s.skipped && !s.agent && !s.key
 const serverName = () => (t('app.name').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'gateway');
 
 /**
- * Текст настройки для карточки. Содержит токен: показывать только на странице с no-store, один раз.
+ * Текст настройки для карточки. Для новых типов и claude-code/cursor/script токен в текст не
+ * попадает: там переменная окружения AGENTKEYGATE_TOKEN или скрытый ввод (vscode). Сам токен
+ * показывается на этой же странице один раз отдельным блоком; claude-desktop и chatgpt без
+ * переменных окружения, поэтому держат токен в тексте.
  * -> { how: ключ словаря, text }
  */
 export function snippetFor(kind, { publicUrl, token }) {
   const name = serverName();
   const mcp = `${publicUrl}/mcp`;
   if (kind === 'claude-code') {
-    return `claude mcp add --transport http ${name} ${mcp} --header "Authorization: Bearer ${token}"`;
+    return `claude mcp add --transport http ${name} ${mcp} --header "Authorization: Bearer $AGENTKEYGATE_TOKEN"`;
   }
   if (kind === 'cursor') {
-    return JSON.stringify({ mcpServers: { [name]: { url: mcp, headers: { Authorization: `Bearer ${token}` } } } }, null, 2);
+    return JSON.stringify({ mcpServers: { [name]: { url: mcp, headers: { Authorization: 'Bearer ${env:AGENTKEYGATE_TOKEN}' } } } }, null, 2);
   }
   if (kind === 'claude-desktop') {
     return JSON.stringify({ mcpServers: { [name]: { command: 'npx', args: ['-y', 'mcp-remote', mcp, '--header', 'Authorization:${AUTH_HEADER}'], env: { AUTH_HEADER: `Bearer ${token}` } } } }, null, 2);
   }
+  if (kind === 'codex') {
+    return [
+      `[mcp_servers.${name}]`,
+      `url = "${mcp}"`,
+      'bearer_token_env_var = "AGENTKEYGATE_TOKEN"',
+    ].join('\n');
+  }
+  if (kind === 'vscode') {
+    return JSON.stringify({
+      inputs: [{ id: 'agentkeygate-token', type: 'promptString', description: 'AgentKeyGate agent token', password: true }],
+      servers: { [name]: { type: 'http', url: mcp, headers: { Authorization: 'Bearer ${input:agentkeygate-token}' } } },
+    }, null, 2);
+  }
+  if (kind === 'gemini') {
+    return JSON.stringify({ mcpServers: { [name]: { httpUrl: mcp, headers: { Authorization: 'Bearer $AGENTKEYGATE_TOKEN' } } } }, null, 2);
+  }
+  if (kind === 'hermes') {
+    return [
+      'mcp_servers:',
+      `  ${name}:`,
+      `    url: ${mcp}`,
+      '    headers:',
+      '      Authorization: Bearer ${AGENTKEYGATE_TOKEN}',
+    ].join('\n');
+  }
+  if (kind === 'openclaw') {
+    return JSON.stringify({ mcp: { servers: { [name]: { url: mcp, transport: 'streamable-http', headers: { Authorization: 'Bearer ${AGENTKEYGATE_TOKEN}' } } } } }, null, 2);
+  }
   if (kind === 'script') {
     return [
-      `curl -s -X POST ${publicUrl}/v1/grants -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -d '{"provider":"<service>","reason":"<why>"}'`,
-      `curl -s ${publicUrl}/v1/grants/<request_id> -H "Authorization: Bearer ${token}"`,
+      `curl -s -X POST ${publicUrl}/v1/grants -H "Authorization: Bearer $AGENTKEYGATE_TOKEN" -H "Content-Type: application/json" -d '{"provider":"<service>","reason":"<why>"}'`,
+      `curl -s ${publicUrl}/v1/grants/<request_id> -H "Authorization: Bearer $AGENTKEYGATE_TOKEN"`,
       `curl -s ${publicUrl}/v1/proxy/<service>/<path> -H "Authorization: Bearer <pass token>"`,
     ].join('\n');
   }

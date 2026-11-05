@@ -127,6 +127,7 @@ export function createProxy({ repo, catalog, vault, grants, access, limits, logg
     if (!auth.ok) { logger.debug?.({ reason: auth.reason }, 'proxy.unauthorized'); return fail(owner ? 404 : 401, auth.code); }
     const { grant, credential, provider } = auth;
     const agentId = owner ? 'owner' : grant.agent_id;
+    if (!owner) repo.touchAgent(agentId); // успешная авторизация пропуска: last_seen_at (repo сам держит раз в минуту)
     const auditBase = owner
       ? { credential: credential.id, provider: provider.slug, via }
       : { grant: grant.id, agent: agentId, credential: credential.id, provider: provider.slug, via, ...(input.sessionTag && { session: input.sessionTag }) };

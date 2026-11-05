@@ -366,6 +366,14 @@ export async function registerWeb(fastify, ctx) {
     repo.setMeta('onboarding_notify_skipped', '1');
     return reply.redirect('/welcome');
   });
+  // Проверка подключения (ТЗ 1.0.2): только владелец, без JS и опроса, обновление переходом по ссылке.
+  // В демо маршрут закрыт allowlist-ом (в таблицу demoRouteGuard не добавлен).
+  fastify.get('/welcome/check/:id', async (req, reply) => {
+    if (!requireOwner(req, reply)) return reply;
+    const agent = repo.getAgent(req.params.id);
+    if (!agent) return html(reply, V.errorPage(404, t('error.page_not_found')), 404);
+    return html(reply, V.welcomeCheck({ agent }));
+  });
 
   // ---- ключи
   fastify.get('/keys', async (req, reply) => reply.redirect('/'));

@@ -49,6 +49,7 @@ export async function agentApi(fastify, { repo, catalog, requests, grants, proxy
     const a = authAgent(repo, bearer(req));
     if (!a) { reply.code(401); return null; }
     if (!limiter.take(a.id)) { reply.code(429); return null; }
+    repo.touchAgent(a.id); // успешная авторизация агента: last_seen_at (repo сам держит раз в минуту)
     return a;
   }
 

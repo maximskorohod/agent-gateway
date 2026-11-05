@@ -435,6 +435,7 @@ export async function mcpPlugin(fastify, { repo, catalog, requests, grants, acce
       if (!failLimiter.take(ip)) return send(429, 'rate_limited');
       return send(401, 'unauthorized');
     }
+    repo.touchAgent(agent.id); // успешная авторизация агента: last_seen_at (repo сам держит раз в минуту)
 
     // 3. лимит запросов на агента
     if (!limits.mcp.take(agent.id)) return send(429, 'rate_limited');

@@ -1,6 +1,6 @@
 // Онбординг «Connect your agent»: карточки агентов, первый ключ, уведомления, экран «It works».
 // Без инлайн-скриптов и внешних ресурсов; кнопка Copy работает через data-copy из /public/app.js.
-import { html, form, layout, enc, th, waitlistLink } from './html.js';
+import { html, form, layout, enc, th, waitlistLink, fmtDate } from './html.js';
 import { t, hasKey } from '../../i18n.js';
 import { KINDS, snippetFor } from '../onboarding.js';
 
@@ -81,6 +81,28 @@ export function welcomeAgentCreated({ csrf, agent = {}, token = '', kind = 'scri
     <div class="token-box"><code id="token">${token}</code></div>
     <p class="actions"><button class="btn" type="button" data-copy="#token" data-copied="${t('agents.copied')}" data-selected="${t('agents.selected')}">${t('agents.copy')}</button></p>
     <p class="warn" role="alert">${t('welcome.token_warn')}</p>
+    <h2>${t('welcome.say_title')}</h2>
+    <pre class="codes" id="say">${t('welcome.say_to_agent')}</pre>
+    <p class="actions"><button class="btn" type="button" data-copy="#say" data-copied="${t('agents.copied')}" data-selected="${t('agents.selected')}">${t('agents.copy')}</button></p>
+    <p class="actions"><a class="btn" href="/welcome/check/${enc(agent.id)}">${t('welcome.check_open')}</a></p>
     <p><a href="/welcome">${t('welcome.back')}</a></p>
   `, { csrf });
+}
+
+/**
+ * Проверка подключения (ТЗ 1.0.2): без JS и опроса. Показывает «ещё нет» или дату последней
+ * авторизации агента (agents.last_seen_at), обновляется переходом по ссылке «Обновить».
+ * В демо маршрут закрыт allowlist-ом (в таблицу demoRouteGuard не добавлен).
+ */
+export function welcomeCheck({ agent = {} } = {}) {
+  const when = agent.last_seen_at ? fmtDate(agent.last_seen_at) : t('welcome.check_none');
+  return layout(t('welcome.check_title', { name: agent.name }), html`
+    <section class="card" role="status">
+      <h2>${t('welcome.check_title', { name: agent.name })}</h2>
+      <p class="hint">${t('welcome.check_hint')}</p>
+      <p><strong>${when}</strong></p>
+      <p class="actions"><a class="btn" href="/welcome/check/${enc(agent.id)}">${t('welcome.check_refresh')}</a></p>
+    </section>
+    <p><a href="/welcome">${t('welcome.back')}</a></p>
+  `);
 }

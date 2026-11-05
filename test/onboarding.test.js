@@ -10,7 +10,7 @@ import { buildApp } from '../src/app.js';
 import { makeLink } from '../src/auth/links.js';
 import { totpAt } from '../src/auth/totp.js';
 import { initI18n } from '../src/i18n.js';
-import { onboardingState, needsWelcome, snippetFor } from '../src/web/onboarding.js';
+import { onboardingState, needsWelcome, snippetFor, KINDS } from '../src/web/onboarding.js';
 
 initI18n('en');
 
@@ -115,7 +115,9 @@ test('карточка создаёт ровно одного агента, то
   assert.ok(tok, 'токен показан');
   assert.ok(r.text2.includes('claude mcp add --transport http'));
   assert.ok(r.text2.includes('http://127.0.0.1/mcp'), 'publicUrl + /mcp');
-  assert.ok(r.text2.includes(`--header &quot;Authorization: Bearer ${tok}&quot;`), 'заголовок со своим токеном (экранирован)');
+  // ТЗ 1.0.2 (пакет 4): сниппет claude-code читает $AGENTKEYGATE_TOKEN, сам токен в тексте не печатается
+  assert.ok(r.text2.includes('--header &quot;Authorization: Bearer $AGENTKEYGATE_TOKEN&quot;'), 'заголовок с переменной окружения');
+  assert.ok(!r.text2.slice(0, r.text2.indexOf('token-box')).includes(tok), 'в сниппете токена нет');
   assert.match(r.text2, /data-copy="#snippet"/);
   assert.doesNotMatch(r.text2, /<script(?![^>]*\ssrc="\/public\/)/i, 'нет инлайн-скриптов');
   assert.equal(r.headers.get('content-security-policy'), CSP);
@@ -196,6 +198,84 @@ test('«It works» после успешного вызова через про�
   assert.match(w, /href="\/stats"/);
   assert.ok(w.includes(`href="${WAITLIST}"`), 'лист ожидания из config.waitlistUrl');
   assert.ok(!w.includes(BOT), 'ключ нигде не показан');
+});
+
+test('новые карточки (ТЗ 1.0.2): KINDS, сниппеты без токена, форматы по типам', () => {
+  const url = 'https://gw.example.com';
+  const tok = `gwa_${'k'.repeat(24)}`;
+  const snip = (k) => snippetFor(k, { publicUrl: url, token: tok });
+  for (const k of ['codex', 'vscode', 'gemini', 'hermes', 'openclaw', 'cursor', 'claude-code', 'script']) {
+    assert.ok(KINDS.includes(k), k);
+    assert.ok(!snip(k).includes(tok), `${k}: токена в тексте нет`);
+  }
+  // codex: TOML с bearer_token_env_var
+  const codex = snip('codex');
+  assert.ok(codex.includes('[mcp_servers.agentkeygate]'), codex);
+  assert.ok(codex.includes(`url = "${url}/mcp"`), codex);
+  assert.ok(codex.includes('bearer_token_env_var = "AGENTKEYGATE_TOKEN"'), codex);
+  // vscode: JSON с inputs password и ${input:...}
+  const vs = JSON.parse(snip('vscode'));
+  assert.equal(vs.servers.agentkeygate.type, 'http');
+  assert.equal(vs.servers.agentkeygate.url, `${url}/mcp`);
+  assert.equal(vs.inputs[0].password, true);
+  assert.ok(String(vs.servers.agentkeygate.headers.Authorization).includes('${input:'), snip('vscode'));
+  // gemini: httpUrl
+  const g = JSON.parse(snip('gemini'));
+  assert.equal(g.mcpServers.agentkeygate.httpUrl, `${url}/mcp`);
+  assert.ok(String(g.mcpServers.agentkeygate.headers.Authorization).includes('$AGENTKEYGATE_TOKEN'));
+  // hermes: YAML
+  const hermes = snip('hermes');
+  for (const part of ['mcp_servers:', 'agentkeygate:', `${url}/mcp`, '${AGENTKEYGATE_TOKEN}']) assert.ok(hermes.includes(part), part);
+  // openclaw: mcp.servers с transport streamable-http
+  const oc = JSON.parse(snip('openclaw'));
+  assert.equal(oc.mcp.servers.agentkeygate.transport, 'streamable-http');
+  assert.equal(oc.mcp.servers.agentkeygate.url, `${url}/mcp`);
+  // cursor: переменная окружения в форме Cursor
+  assert.ok(snip('cursor').includes('${env:AGENTKEYGATE_TOKEN}'));
+  // claude-code: команда c переменной
+  assert.ok(snip('claude-code').includes('claude mcp add --transport http agentkeygate'));
+  assert.ok(snip('claude-code').includes('$AGENTKEYGATE_TOKEN'));
+  // script: curl с переменной
+  assert.ok(snip('script').includes('$AGENTKEYGATE_TOKEN'));
+  // claude-desktop и chatgpt остались как были: токен в тексте
+  assert.ok(snip('claude-desktop').includes(tok));
+  assert.ok(snip('chatgpt').includes('openapi'));
+});
+
+test('страница создания: блок «что сказать агенту», ссылка на проверку; страница проверки и троттлинг last_seen_at', async () => {
+  const c = await boot();
+  await c.finish(); await c.get('/welcome');
+  const r = await c.post('/welcome/agent/codex');
+  assert.equal(r.status, 200);
+  assert.match(r.text2, /What to tell the agent/);
+  assert.match(r.text2, /List the services available through agentkeygate/);
+  assert.match(r.text2, /data-copy="#say"/);
+  const agent = c.app.repo.listAgents()[0];
+  assert.ok(agent);
+  assert.match(r.text2, new RegExp(`href="/welcome/check/${agent.id}"`), 'ссылка на проверку подключения');
+  // страница проверки: без обращения «ещё нет», обновление ссылкой, чужой id даёт 404
+  assert.doesNotMatch(r.text2, /<script(?![^>]*\ssrc="\/public\/)/i, 'без инлайн-скриптов');
+  const check1 = await c.get(`/welcome/check/${agent.id}`);
+  assert.equal(check1.status, 200);
+  assert.match(check1.text2, /has not connected yet/);
+  assert.match(check1.text2, /href="\/welcome\/check\//, 'кнопка обновить');
+  // троттлинг: повторный touch внутри минуты не пишет, за окном пишет
+  c.app.repo.touchAgent(agent.id);
+  const seen = c.app.repo.getAgent(agent.id).last_seen_at;
+  assert.ok(seen, 'после touch last_seen_at выставлен');
+  c.app.db.prepare('UPDATE agents SET last_seen_at = ? WHERE id = ?').run(seen - 30, agent.id);
+  c.app.repo.touchAgent(agent.id);
+  assert.equal(c.app.repo.getAgent(agent.id).last_seen_at, seen - 30, 'внутри минуты last_seen_at не меняется');
+  c.app.db.prepare('UPDATE agents SET last_seen_at = ? WHERE id = ?').run(seen - 120, agent.id);
+  c.app.repo.touchAgent(agent.id);
+  assert.ok(c.app.repo.getAgent(agent.id).last_seen_at > seen - 120, 'после окна last_seen_at обновляется');
+  const check2 = await c.get(`/welcome/check/${agent.id}`);
+  assert.doesNotMatch(check2.text2, /has not connected yet/);
+  assert.equal((await c.get('/welcome/check/nope')).status, 404);
+  // аноним на вход, создание агента требует сессии
+  const anon = await fetch(`${c.base}/welcome/check/${agent.id}`, { redirect: 'manual' });
+  assert.equal(anon.status, 302);
+  assert.equal(anon.headers.get('location'), '/login');
 });
 
 test('пропуск онбординга убирает ссылку с корня; страницы без инлайн-скриптов и внешних ресурсов', async () => {
