@@ -29,8 +29,8 @@ You can revoke a pass or an agent at any time. Revocation takes effect on the ne
 Point a DNS A record at the server, then run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/v1.0.1/scripts/setup.sh -o setup.sh
-echo "40c9cc59c14ca795263b537325f624f709f3e2e670d93221d8e99ddd76147a15  setup.sh" | sha256sum -c -
+curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/v1.0.2/scripts/setup.sh -o setup.sh
+echo "ffea56cf4dfe2c4e90b2ee96bc47b7e4844338fc095d46ec4ce1dffe3da23776  setup.sh" | sha256sum -c -
 sudo bash setup.sh --domain gw.example.com
 ```
 

@@ -1,6 +1,6 @@
 {
   "name": "agentkeygate",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Self-hosted gateway that gives AI agents temporary, owner-approved access to APIs without ever seeing the keys",
   "license": "Apache-2.0",

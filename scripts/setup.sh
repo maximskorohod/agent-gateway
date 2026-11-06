@@ -124,7 +124,7 @@ build_env() {
 DOMAIN=""
 REPO="https://github.com/maximskorohod/agentkeygate.git"
 # The release this script belongs to. Installing a tag instead of the moving main means the same code on every run.
-BRANCH="v1.0.1"
+BRANCH="v1.0.2"
 VAULT="ssm"
 REGION="eu-central-1"
 BEHIND_CF=0
