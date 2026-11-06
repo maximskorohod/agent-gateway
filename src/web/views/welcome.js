@@ -72,6 +72,10 @@ export function welcomePage({ csrf, state, providers = [], flash = null } = {}) 
 export function welcomeAgentCreated({ csrf, agent = {}, token = '', kind = 'script', publicUrl = '' } = {}) {
   const text = snippetFor(kind, { publicUrl, token });
   const how = hasKey(`welcome.how.${kind}`) ? t(`welcome.how.${kind}`) : '';
+  // Типы, где сниппет читает AGENTKEYGATE_TOKEN: без этого блока переменная осталась бы пустой и агент получил бы 401.
+  const envBlock = text.includes('AGENTKEYGATE_TOKEN')
+    ? html`<p class="hint">${t('welcome.token_env')}</p><pre class="codes">${t('welcome.token_env_cmd')}</pre>`
+    : '';
   return layout(t('welcome.created_title', { name: agent.name }), html`
     <p class="hint">${how}</p>
     <h2>${t('welcome.snippet')}</h2>
@@ -81,10 +85,11 @@ export function welcomeAgentCreated({ csrf, agent = {}, token = '', kind = 'scri
     <div class="token-box"><code id="token">${token}</code></div>
     <p class="actions"><button class="btn" type="button" data-copy="#token" data-copied="${t('agents.copied')}" data-selected="${t('agents.selected')}">${t('agents.copy')}</button></p>
     <p class="warn" role="alert">${t('welcome.token_warn')}</p>
+    ${envBlock}
     <h2>${t('welcome.say_title')}</h2>
     <pre class="codes" id="say">${t('welcome.say_to_agent')}</pre>
     <p class="actions"><button class="btn" type="button" data-copy="#say" data-copied="${t('agents.copied')}" data-selected="${t('agents.selected')}">${t('agents.copy')}</button></p>
-    <p class="actions"><a class="btn" href="/welcome/check/${enc(agent.id)}">${t('welcome.check_open')}</a></p>
+    <p class="actions"><a class="btn" href="/welcome/check/${enc(agent.id)}" target="_blank" rel="noopener noreferrer">${t('welcome.check_open')}</a></p>
     <p><a href="/welcome">${t('welcome.back')}</a></p>
   `, { csrf });
 }
@@ -98,7 +103,6 @@ export function welcomeCheck({ agent = {} } = {}) {
   const when = agent.last_seen_at ? fmtDate(agent.last_seen_at) : t('welcome.check_none');
   return layout(t('welcome.check_title', { name: agent.name }), html`
     <section class="card" role="status">
-      <h2>${t('welcome.check_title', { name: agent.name })}</h2>
       <p class="hint">${t('welcome.check_hint')}</p>
       <p><strong>${when}</strong></p>
       <p class="actions"><a class="btn" href="/welcome/check/${enc(agent.id)}">${t('welcome.check_refresh')}</a></p>

@@ -75,7 +75,20 @@ test('повторный запуск без флага: демо сохраня
   assert.ok(!lines.includes('GW_DATA_DIR=/x'));
 });
 
-test('обычная установка: без строк демо, управляемые поля новые, чужие GW_* переносятся', { skip: !hasBash && 'bash не найден' }, () => {
+test('старый env без GW_PROD_HOSTS: отказ с сообщением, а не молчаливый выход; кавычки в значениях снимаются', { skip: !hasBash && 'bash не найден' }, () => {
+  const noHosts = tmpFile('nohosts.env', 'GW_LANG=ru\n');
+  const r = setup(['--domain', 'demo.example.com', '--demo', '--print-env'], noHosts);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--prod-hosts/);
+  const quoted = tmpFile('quoted.env', 'GW_DEMO="1"\nGW_PROD_HOSTS="gw.example.com"\n');
+  const q = setup(['--domain', 'demo.example.com', '--print-env'], quoted);
+  assert.equal(q.status, 0, q.stderr);
+  const lines = q.stdout.split('\n');
+  assert.ok(lines.includes('GW_DEMO=1'), 'демо сохраняется');
+  assert.ok(lines.includes('GW_PROD_HOSTS=gw.example.com'), 'значение без кавычек');
+});
+
+test('обычная установка: без строк демо, управляемые поля новые, чужие GW_* переносятся',{ skip: !hasBash && 'bash не найден' }, () => {
   const old = tmpFile('plain.env', 'GW_TZ=Asia/Tbilisi\nGW_VAULT=ssm\nGW_PUBLIC_URL=https://old.example.com\n');
   const r = setup(['--domain', 'gw.example.com', '--vault', 'file', '--print-env'], old);
   assert.equal(r.status, 0, r.stderr);
@@ -100,6 +113,8 @@ test('deploy/gateway-demo.conf: drop-in с изоляцией сети и кат
   assert.match(dropIn, /^IPAddressDeny=any$/m);
   assert.match(dropIn, /^IPAddressAllow=localhost$/m);
   assert.match(dropIn, /^ReadWritePaths=\/var\/lib\/agentkeygate-demo$/m);
+  // пустая строка снимает боевой путь базового юнита: демо его не создаёт, а без каталога юнит не стартует
+  assert.match(dropIn, /^ReadWritePaths=\nReadWritePaths=\/var\/lib\/agentkeygate-demo$/m);
 });
 
 test('deploy/nftables-demo.conf: таблица agw_demo без flush ruleset', () => {

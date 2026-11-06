@@ -57,6 +57,14 @@ test('№10: /public/* и /healthz не вызывают repo.touchSession, об
   assert.ok(touches > 0, 'обычная страница продлевает сессию');
 });
 
+test('демо: /welcome/check закрыт для посетителя и для существующего агента', async () => {
+  const c = await bootDemo();
+  await c.login();
+  c.app.repo.createAgent({ id: 'chk', name: 'chk', token_hash: crypto.randomBytes(32).toString('hex'), enabled: 1, all_credentials: 1 });
+  const r = await fetch(`${c.base}/welcome/check/chk`, { headers: { cookie: c.cookie() }, redirect: 'manual' });
+  assert.equal(r.status, 404);
+});
+
 // ---- №11: телефоны демо-мока годятся для маски ----
 
 test('№11: телефоны в src/demo/mock.js с "+" и не короче 10 цифр, maskText их заменяет', () => {

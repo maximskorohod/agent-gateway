@@ -64,6 +64,10 @@ test('plugin.json: name, версия из package.json, license, repository, us
   assert.match(pl.repository, /github\.com\/maximskorohod\/agentkeygate/);
   assert.ok(pl.userConfig.mcp_url.description.includes('https://your-domain/mcp'), 'описание mcp_url: полный адрес');
   assert.equal(pl.userConfig.agent_token.sensitive, true, 'agent_token sensitive');
+  // Claude Code не принимает manifest без type, title и description у каждой настройки
+  for (const [k, v] of Object.entries(pl.userConfig)) {
+    for (const field of ['type', 'title', 'description']) assert.ok(v[field], `${k}.${field}`);
+  }
 });
 
 test('.mcp.json плагина: http-сервер с user_config, без настоящих значений', () => {

@@ -30,7 +30,7 @@ Point a DNS A record at the server, then run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/v1.0.2/scripts/setup.sh -o setup.sh
-echo "ffea56cf4dfe2c4e90b2ee96bc47b7e4844338fc095d46ec4ce1dffe3da23776  setup.sh" | sha256sum -c -
+echo "e0ddced59b9c360681161e300232726c32b49fb5f39ee8686765b2971faec2fc  setup.sh" | sha256sum -c -
 sudo bash setup.sh --domain gw.example.com
 ```
 

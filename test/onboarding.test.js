@@ -11,6 +11,8 @@ import { makeLink } from '../src/auth/links.js';
 import { totpAt } from '../src/auth/totp.js';
 import { initI18n } from '../src/i18n.js';
 import { onboardingState, needsWelcome, snippetFor, KINDS } from '../src/web/onboarding.js';
+import { sha256hex } from '../src/core/access.js';
+import crypto from 'node:crypto';
 
 initI18n('en');
 
@@ -276,6 +278,65 @@ test('страница создания: блок «что сказать аге
   const anon = await fetch(`${c.base}/welcome/check/${agent.id}`, { redirect: 'manual' });
   assert.equal(anon.status, 302);
   assert.equal(anon.headers.get('location'), '/login');
+});
+
+test('успешная авторизация в REST, MCP и прокси ставит last_seen_at; неверный токен и отключённый агент не ставят', async () => {
+  await startMock();
+  const c = await boot({ testUpstream: { 'api.telegram.org': `http://127.0.0.1:${mockPort}`, 'test.bitrix24.ru': `http://127.0.0.1:${mockPort}` } });
+  const { repo, db } = c.app;
+  const mk = (id) => {
+    const token = `gwa_${crypto.randomBytes(24).toString('base64url')}`;
+    repo.createAgent({ id, name: id, token_hash: sha256hex(token), enabled: 1, all_credentials: 1 });
+    return token;
+  };
+  const seen = (id) => repo.getAgent(id).last_seen_at;
+  const auth = (token) => ({ authorization: `Bearer ${token}` });
+
+  // REST: GET заявки не проходит через requests.js, поэтому проверяет именно авторизацию API
+  const rest = mk('t-rest');
+  await (await fetch(`${c.base}/v1/grants/none`, { headers: auth(rest) })).text();
+  assert.ok(seen('t-rest'), 'REST');
+
+  // MCP
+  const mcp = mk('t-mcp');
+  const m = await fetch(`${c.base}/mcp`, {
+    method: 'POST',
+    headers: { ...auth(mcp), 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
+  });
+  await m.text();
+  assert.equal(m.status, 200);
+  assert.ok(seen('t-mcp'), 'MCP');
+
+  // прокси: после выдачи пропуска отметка сбрасывается, вызов пропуском ставит её снова
+  repo.createCredential({ id: 't-cred', provider: 'bitrix24', label: 't', kind: 'path', host: 'test.bitrix24.ru', injection: { type: 'path', template: '/rest/{secret}' }, vault_param: 'cred/t-cred', last4: '0000', mode: 'always', max_ttl: 3600, max_calls: 10, max_parallel: 2 });
+  await c.app.ctx.vault.put('cred/t-cred', crypto.randomBytes(16).toString('hex'));
+  const g = await fetch(`${c.base}/v1/grants`, { method: 'POST', headers: { ...auth(rest), 'content-type': 'application/json' }, body: JSON.stringify({ provider: 'bitrix24', ttl: 600, calls: 5, reason: 't' }) });
+  assert.equal(g.status, 200);
+  const pass = (await g.json()).token;
+  db.prepare('UPDATE agents SET last_seen_at = NULL WHERE id = ?').run('t-rest');
+  const p = await fetch(`${c.base}/v1/proxy/bitrix24/crm.deal.list.json`, { headers: auth(pass) });
+  await p.text();
+  assert.equal(p.status, 200);
+  assert.ok(seen('t-rest'), 'прокси');
+
+  // неудачная авторизация отметку не ставит
+  const off = mk('t-off');
+  repo.setAgentEnabled('t-off', 0);
+  await (await fetch(`${c.base}/v1/grants/none`, { headers: auth(off) })).text();
+  assert.ok(!seen('t-off'), 'отключённый агент');
+});
+
+test('страница создания: блок про переменную только там, где сниппет её читает; проверка открывается в новой вкладке', async () => {
+  const c = await boot();
+  await c.finish(); await c.get('/welcome');
+  const code = await c.post('/welcome/agent/claude-code');
+  assert.ok(code.text2.includes('read -rs AGENTKEYGATE_TOKEN'), 'команда для bash');
+  assert.ok(code.text2.includes('$env:AGENTKEYGATE_TOKEN = Read-Host'), 'команда для PowerShell');
+  assert.match(code.text2, /href="\/welcome\/check\/[^"]+" target="_blank"/, 'страница с токеном остаётся открытой');
+  await c.get('/welcome');
+  const vs = await c.post('/welcome/agent/vscode');
+  assert.ok(!vs.text2.includes('read -rs AGENTKEYGATE_TOKEN'), 'у VS Code скрытый ввод, переменная не нужна');
 });
 
 test('пропуск онбординга убирает ссылку с корня; страницы без инлайн-скриптов и внешних ресурсов', async () => {

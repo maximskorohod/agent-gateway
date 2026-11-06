@@ -4,7 +4,7 @@ The plugin connects Claude Code to your self-hosted [AgentKeyGate](https://githu
 
 ## Install
 
-Add the marketplace, then install the plugin (Claude Code asks for the two settings on the first use):
+Add the marketplace, install the plugin, then set the two settings with `/plugin configure agentkeygate@agentkeygate` in Claude Code:
 
 ```bash
 claude plugin marketplace add maximskorohod/agentkeygate

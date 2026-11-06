@@ -140,8 +140,7 @@ export function createRepo(db, { demo = false } = {}) {
     setAgentEnabled: db.prepare('UPDATE agents SET enabled = ? WHERE id = ?'),
     revokeAgentGrants: db.prepare('UPDATE grants SET revoked_at = unixepoch() WHERE agent_id = ? AND revoked_at IS NULL'),
     delAgent: db.prepare('DELETE FROM agents WHERE id = ?'),
-    touchAgent: db.prepare('UPDATE agents SET last_seen_at = unixepoch() WHERE id = ?'),
-    agentLastSeen: db.prepare('SELECT last_seen_at FROM agents WHERE id = ?'),
+    touchAgent: db.prepare('UPDATE agents SET last_seen_at = unixepoch() WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at <= unixepoch() - 60)'),
     setAgentAll: db.prepare('UPDATE agents SET all_credentials = ? WHERE id = ?'),
     listAgentCreds: db.prepare('SELECT credential_id FROM agent_credentials WHERE agent_id = ? ORDER BY credential_id'),
     delAgentCreds: db.prepare('DELETE FROM agent_credentials WHERE agent_id = ?'),
@@ -645,9 +644,7 @@ export function createRepo(db, { demo = false } = {}) {
     touchAgent(id) {
       // last_seen_at обновляется не чаще раза в минуту (ТЗ 1.0.2): поток авторизаций агента
       // (REST, MCP, прокси) не должен писать в базу на каждый запрос. Окно сверяется с самой
-      // записью last_seen_at, поэтому ограничение переживает перезапуск процесса.
-      const row = st.agentLastSeen.get(id);
-      if (row?.last_seen_at && Math.floor(Date.now() / 1000) - row.last_seen_at < 60) return;
+      // записью last_seen_at внутри одного UPDATE, поэтому ограничение переживает перезапуск процесса.
       st.touchAgent.run(id);
     },
     listAgentCredentials(agentId) {

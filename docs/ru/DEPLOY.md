@@ -69,7 +69,7 @@ curl -s -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/met
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/v1.0.2/scripts/setup.sh -o /root/setup.sh
-echo "ffea56cf4dfe2c4e90b2ee96bc47b7e4844338fc095d46ec4ce1dffe3da23776  /root/setup.sh" | sha256sum -c -
+echo "e0ddced59b9c360681161e300232726c32b49fb5f39ee8686765b2971faec2fc  /root/setup.sh" | sha256sum -c -
 sudo bash /root/setup.sh --domain gw.example.com --vault ssm --region eu-central-1
 ```
 
@@ -290,10 +290,11 @@ sudo bash setup.sh --domain demo.example.com --demo --prod-hosts gw.example.com
 [Service]
 IPAddressDeny=any
 IPAddressAllow=localhost
+ReadWritePaths=
 ReadWritePaths=/var/lib/agentkeygate-demo
 ```
 
-`IPAddressDeny=any` запрещает юниту любой IP-трафик, `IPAddressAllow=localhost` оставляет loopback, через который Caddy ходит к шлюзу на 127.0.0.1:8080, `ReadWritePaths` оставляет единственный путь записи внутри каталога данных демо. Проверка: `systemctl show gateway -p IPAddressDeny -p IPAddressAllow`.
+`IPAddressDeny=any` запрещает юниту любой IP-трафик, `IPAddressAllow=localhost` оставляет loopback, через который Caddy ходит к шлюзу на 127.0.0.1:8080. Пустая строка `ReadWritePaths=` снимает боевой путь из `gateway.service` (демо не создаёт этот каталог, а без него юнит не запустится), следующая строка оставляет каталог данных демо единственным путём записи. Проверка: `systemctl show gateway -p IPAddressDeny -p IPAddressAllow -p ReadWritePaths`.
 
 **Линия 3b: nftables.** Отдельная таблица с приоритетом раньше правил из `deploy/nftables.conf`: исходящее от пользователя `gateway` разрешено только через loopback и как ответы на установленные входящие соединения, остальное отбрасывается. Таблица лежит в `deploy/nftables-demo.conf`, который ставится как `/etc/nftables-demo.conf`:
 

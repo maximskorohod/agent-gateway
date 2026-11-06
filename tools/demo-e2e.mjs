@@ -118,7 +118,9 @@ await step('8. вызов /deals пропуском из команды: 200 и 
   expect(url, 'в команде нет адреса');
   const pass = curlCommand.match(/Bearer ([A-Za-z0-9_.-]+)/)?.[1] ?? '';
   expect(pass, 'в команде нет пропуска');
-  const res = await fetch(url, { headers: { authorization: `Bearer ${pass}` } });
+  // Команда содержит GW_PUBLIC_URL; вызов идёт на проверяемый адрес, чтобы через туннель не попасть в другой экземпляр.
+  const target = new URL(url);
+  const res = await fetch(`${base}${target.pathname}${target.search}`, { headers: { authorization: `Bearer ${pass}` } });
   expect(res.status === 200, `status ${res.status}`);
   const body = await res.json();
   expect(Array.isArray(body.result) && body.result.length > 0, 'result пустой');

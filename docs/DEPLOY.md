@@ -69,7 +69,7 @@ On the server, as root:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/maximskorohod/agentkeygate/v1.0.2/scripts/setup.sh -o /root/setup.sh
-echo "ffea56cf4dfe2c4e90b2ee96bc47b7e4844338fc095d46ec4ce1dffe3da23776  /root/setup.sh" | sha256sum -c -
+echo "e0ddced59b9c360681161e300232726c32b49fb5f39ee8686765b2971faec2fc  /root/setup.sh" | sha256sum -c -
 sudo bash /root/setup.sh --domain gw.example.com --vault ssm --region eu-central-1
 ```
 
@@ -290,10 +290,11 @@ A repeated run keeps demo mode even without `--demo`: the mode and `GW_PROD_HOST
 [Service]
 IPAddressDeny=any
 IPAddressAllow=localhost
+ReadWritePaths=
 ReadWritePaths=/var/lib/agentkeygate-demo
 ```
 
-`IPAddressDeny=any` forbids the unit any IP traffic, `IPAddressAllow=localhost` keeps loopback, over which Caddy reaches the gateway at 127.0.0.1:8080, `ReadWritePaths` keeps the writable path inside the demo data directory. Check: `systemctl show gateway -p IPAddressDeny -p IPAddressAllow`.
+`IPAddressDeny=any` forbids the unit any IP traffic, `IPAddressAllow=localhost` keeps loopback, over which Caddy reaches the gateway at 127.0.0.1:8080. The empty `ReadWritePaths=` clears the production path from `gateway.service` (the demo does not create that directory, and a missing path stops the unit from starting), the next line leaves the demo data directory as the one writable path. Check: `systemctl show gateway -p IPAddressDeny -p IPAddressAllow -p ReadWritePaths`.
 
 **Line 3b: nftables.** A separate table with a priority earlier than the rules from `deploy/nftables.conf`: outbound traffic from the user `gateway` is allowed only over loopback and as replies to established inbound connections, everything else is dropped. The table lives in `deploy/nftables-demo.conf`, installed as `/etc/nftables-demo.conf`:
 

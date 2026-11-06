@@ -3,15 +3,20 @@
   "version": "1.0.2",
   "description": "Temporary, owner-approved access to third-party APIs for AI agents: the agent gets a short pass, never the API key.",
   "license": "Apache-2.0",
+  "author": {
+    "name": "maximskorohod"
+  },
   "repository": "https://github.com/maximskorohod/agentkeygate",
   "userConfig": {
     "mcp_url": {
       "type": "string",
+      "title": "Gateway MCP URL",
       "description": "Full address of the gateway MCP endpoint, for example https://your-domain/mcp",
       "required": true
     },
     "agent_token": {
       "type": "string",
+      "title": "Agent token",
       "description": "Agent token (gwa_...) created in the gateway web UI, shown once when the agent is created",
       "required": true,
       "sensitive": true

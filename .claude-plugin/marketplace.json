@@ -3,6 +3,9 @@
   "owner": {
     "name": "maximskorohod"
   },
+  "metadata": {
+    "description": "Claude Code plugin for AgentKeyGate, a self-hosted gateway that gives AI agents temporary, owner-approved API access."
+  },
   "plugins": [
     {
       "name": "agentkeygate",

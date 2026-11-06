@@ -94,10 +94,12 @@ carried_gw_lines() {
   grep -E '^GW_[A-Z0-9_]+=' "$OLD_ENV_FILE" 2>/dev/null | grep -Ev "$MANAGED_RE" || true
 }
 
-# The value of one GW_ variable from the previous env file; empty when the file is missing.
+# The value of one GW_ variable from the previous env file, without the quotes systemd would strip;
+# empty when the file or the line is missing. Always returns 0: an absent line is not an error
+# (under set -e with pipefail a failed grep here would end the script without a message).
 old_gw_value() {
   [[ -r "$OLD_ENV_FILE" ]] || return 0
-  grep -E "^${1}=" "$OLD_ENV_FILE" 2>/dev/null | head -n 1 | cut -d= -f2-
+  { grep -E "^${1}=" "$OLD_ENV_FILE" 2>/dev/null || true; } | head -n 1 | cut -d= -f2- | tr -d "\"'"
 }
 
 # The final env on stdout: managed lines anew, unknown GW_* carried over (I-03).
@@ -190,7 +192,7 @@ if [[ "$DEMO" -eq 1 ]]; then
   # Refusals before any change: the demo holds no real keys and runs no setup wizard.
   # The demo vault is the file vault by definition; an explicit --vault ssm is a mistake, not a default.
   if [[ "$VAULT_SET" -eq 1 ]]; then
-    [[ "$VAULT" != "ssm" ]] || die "--demo uses the file vault only: drop --vault ssm"
+    [[ "$VAULT" != "ssm" ]] || die "--demo always uses the file vault: drop --vault ssm"
   fi
   VAULT="file"
   [[ "$FORCE_INIT" -eq 0 ]] || die "--demo does not run the setup wizard: drop --init"
@@ -237,7 +239,7 @@ cat > /etc/apt/apt.conf.d/20auto-upgrades <<'APT'
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT
-# Without their own origins unattended-upgrades touches only the Debian/Ubuntu archives,
+# Without their own origins unattended-upgrades stays within the Debian/Ubuntu archives,
 # so Caddy (Cloudsmith) and Node.js (NodeSource) would stay on old versions. A separate file:
 # the default 50unattended-upgrades already defines Origins-Pattern, and APT config is additive.
 cat > /etc/apt/apt.conf.d/51agentkeygate-origins <<'APT'
@@ -403,7 +405,7 @@ step "systemd: gateway.service"
 install -m 0644 -o root -g root "$APP_DIR/deploy/gateway.service" /etc/systemd/system/gateway.service
 install -d -m 0755 -o root -g root /etc/systemd/system/gateway.service.d
 if [[ "$DEMO" -eq 1 ]]; then
-  step "systemd: demo drop-in (no IP traffic beyond loopback, writes only to the demo data directory)"
+  step "systemd: demo drop-in (no IP traffic beyond loopback, the demo data directory is the one writable path)"
   install -m 0644 -o root -g root "$APP_DIR/deploy/gateway-demo.conf" /etc/systemd/system/gateway.service.d/demo.conf
 else
   # Not in demo mode: a leftover demo drop-in would keep the network closed for a production gateway.
@@ -433,8 +435,8 @@ chown -R caddy:caddy /var/log/caddy
 
 # ---------- 11. nftables ----------
 step "nftables: checking and installing /etc/nftables.conf"
-# Demo: the separate agw_demo table (outbound traffic of the gateway user only over loopback)
-# is installed first, so the include in the main config resolves during the nft -c check.
+# Demo: the separate agw_demo table (outbound traffic of the gateway user stays on loopback)
+# is installed before the main config, so the include in the main config resolves during the nft -c check.
 if [[ "$DEMO" -eq 1 ]]; then
   step "nftables: demo table agw_demo in /etc/nftables-demo.conf"
   install -m 0644 -o root -g root "$APP_DIR/deploy/nftables-demo.conf" /etc/nftables-demo.conf
