@@ -1,5 +1,5 @@
 // Экраны ключей: список и заявки (1), выбор сервиса (2), форма ключа (3), страница ключа.
-import { html, raw, form, layout, enc, fmtDate, fmtDuration, plural, isoDate, keyName, isDemo } from './html.js';
+import { html, raw, form, layout, enc, fmtDate, fmtDuration, plural, isoDate, keyName, isDemo, showcaseBanner } from './html.js';
 import { t, hasKey, providerHint } from '../../i18n.js';
 import { normalizeFilter, protectionOf, defaultFilterFor } from '../../core/filter.js';
 import { DEMO_CREDENTIAL_ID } from '../../demo/reset.js';
@@ -14,9 +14,9 @@ const providerName = (providers, slug) => providers.find((p) => p.slug === slug)
 const sel = (cond) => (cond ? raw(' selected') : '');
 const chk = (cond) => (cond ? raw(' checked') : '');
 
-function approvalOptions(telegramConnected) {
-  // в демо нет кода 2FA: остальные варианты отклонит demoRouteGuard
-  if (isDemo()) return ['web_button'];
+function approvalOptions(telegramConnected, preview = false) {
+  // в демо нет кода 2FA: остальные варианты отклонит demoRouteGuard; витрина только показывает полный набор
+  if (isDemo() && !preview) return ['web_button'];
   return telegramConnected
     ? ['tg_button', 'tg_code', 'web_button', 'web_code']
     : ['web_button', 'web_code'];
@@ -45,11 +45,11 @@ function alwaysForSelect(v) {
  * Настройки ключа: на виду только режим (спрашивать / без вопросов на время / запретить),
  * остальное — в свёрнутом «Дополнительно». Общий для формы ключа и страницы ключа.
  */
-function policyFields(v = {}, { telegramConnected = false, sensitive = false, locked = false } = {}) {
+function policyFields(v = {}, { telegramConnected = false, sensitive = false, locked = false, preview = false } = {}) {
   const win = v.window ?? {};
   const days = (win.days ?? v.days ?? []).map(Number);
   const mode = MODE_OPTIONS.includes(v.mode) ? v.mode : DEFAULTS.mode;
-  const approvals = approvalOptions(telegramConnected);
+  const approvals = approvalOptions(telegramConnected, preview);
   const approval = approvals.includes(v.approval) ? v.approval : approvals[0];
   const maxTtl = Number(v.max_ttl ?? DEFAULTS.max_ttl);
   const expires = typeof v.expires_at === 'number' ? isoDate(v.expires_at) : (v.expires_at ?? '');
@@ -58,7 +58,7 @@ function policyFields(v = {}, { telegramConnected = false, sensitive = false, lo
     <fieldset>
       <legend>${t('policy.how')}</legend>
       ${MODE_OPTIONS.filter((m) => !(locked && m === 'deny')).map((m) => html`<label class="inline"><input type="radio" name="mode" value="${m}"${chk(mode === m)}> ${t(`policy.choice.${m}`)}</label>${m === 'always' ? alwaysForSelect(v) : ''}`)}
-      <p class="hint">${t(isDemo() ? 'demo.always_hint' : 'policy.always_hint')}</p>
+      <p class="hint">${t(isDemo() && !preview ? 'demo.always_hint' : 'policy.always_hint')}</p>
       ${locked ? html`<p class="hint">${t('demo.seeded_hint')}</p>` : ''}
       ${sensitive ? html`<div class="sensitive">
         <p class="hint">${t('policy.sensitive_warning')}</p>
@@ -280,17 +280,26 @@ export function keysPage({ csrf, credentials = [], pending = [], providers = [],
   return layout(t('keys.title'), detail, { csrf, flash, list, listHome: true, pendingCount: pending.length });
 }
 
-/** Экран 2: сетка сервисов (включая «Другой»). */
-export function pickProvider({ providers = [], csrf } = {}) {
-  return layout(t('keys.new'), html`
-    <p class="muted">${t('keys.pick_service')}</p>
-    <ul class="grid">
-      ${providers.map((p) => html`<li>
-        <a class="tile" href="/keys/new/${enc(p.slug)}">
+function providerTile(p, href, tag = '') {
+  return html`<li>
+        <a class="tile" href="${href}">
           <img src="/public/icons/${enc(p.slug)}.svg" alt="" width="32" height="32">
           <span>${p.name}</span>
+          ${tag ? html`<span class="tag">${tag}</span>` : ''}
         </a>
-      </li>`)}
+      </li>`;
+}
+
+/**
+ * Экран 2: сетка сервисов (включая «Другой»). showcase — только в демо: настоящие сервисы
+ * с пометкой «Попробовать», остальные каталога обычной установки ведут на витрину.
+ */
+export function pickProvider({ providers = [], csrf, showcase = null } = {}) {
+  return layout(t('keys.new'), html`
+    <p class="muted">${t(showcase ? 'showcase.pick_hint' : 'keys.pick_service')}</p>
+    <ul class="grid">
+      ${providers.map((p) => providerTile(p, `/keys/new/${enc(p.slug)}`, showcase ? t('showcase.try') : ''))}
+      ${(showcase ?? []).map((p) => providerTile(p, `/showcase/services/${enc(p.slug)}`, t('showcase.view')))}
     </ul>
     <p><a href="/keys">${t('keys.back_new')}</a></p>
   `, { csrf });
@@ -367,7 +376,7 @@ function filterEntity(id, e, fields, flags = []) {
  * Слой 1 (п. 7.2), доступен у любого сервиса: «Только чтение» (если в каталоге описано чтение) и «Скрывать личные данные».
  * f — { readOnly, mask }; скрытое поле protect_form говорит обработчику, что галочки пришли с формы.
  */
-function protectFields(prov, f) {
+function protectFields(prov, f, { preview = false } = {}) {
   const a = protectionOf(prov);
   if (!a.readOnly && !a.mask) return '';
   return html`
@@ -378,8 +387,39 @@ function protectFields(prov, f) {
         <p class="hint">${t('protect.read_only_hint')}</p>` : ''}
       ${a.mask ? html`<label class="inline"><input type="checkbox" name="mask" value="1"${chk(f.mask)}> ${t('protect.mask')}</label>
         <p class="hint">${t('protect.mask_hint')}</p>` : ''}
-      ${isDemo() ? '' : html`<p class="hint">${t('protect.weaken_hint')}</p>`}
+      ${isDemo() && !preview ? '' : html`<p class="hint">${t('protect.weaken_hint')}</p>`}
     </fieldset>`;
+}
+
+/**
+ * Витрина сервиса в демо: настоящие поля и настройки обычной установки, все отключены.
+ * Формы нет, значения не отправляются, сервис в демо недоступен.
+ */
+export function showcaseService({ provider } = {}) {
+  const fields = provider.fields ?? ['key'];
+  const ents = provider.filter ? Object.entries(provider.filter.entities) : [];
+  return layout(provider.name, html`
+    ${showcaseBanner()}
+    ${iconRow(provider, t('showcase.service_caption'))}
+    ${provider.warning && hasKey(`catalog.warn.${provider.slug}`) ? html`<div class="warn" role="note"><p>${t(`catalog.warn.${provider.slug}`)}</p></div>` : ''}
+    ${unverifiedNote(provider)}
+    <fieldset disabled>
+      ${fields.map((f) => (FIELDS[f] ? FIELDS[f]({}, provider) : ''))}
+      ${providerHint(provider) ? html`<p class="hint">${providerHint(provider)}</p>` : ''}
+      ${getKeyBlock(provider)}
+      ${policyFields({}, { telegramConnected: true, sensitive: !!provider.sensitive, preview: true })}
+      ${protectFields(provider, newKeyProtection(provider, {}), { preview: true })}
+      ${ents.length ? html`<section class="card">
+        <h2>${t('filter.title')}</h2>
+        <label class="inline switch"><input type="checkbox" name="enabled" value="1" checked> ${t('filter.enabled')}</label>
+        <p class="hint">${t('filter.on_hint')}</p>
+        ${ents.map(([id, e]) => filterEntity(id, e, e.defaults ?? []))}
+        <p class="hint">${t('filter.deny_hint')}</p>
+      </section>` : ''}
+    </fieldset>
+    <p class="actions"><a class="btn primary" href="/">${t('showcase.try_live')}</a></p>
+    <p><a href="/keys/new">${t('keys.other_service')}</a></p>
+  `);
 }
 
 /** Блок «Что видит агент» (ТЗ v1.3): защита слоя 1, выключатель и галочки по типам данных (сделки, лиды…). */

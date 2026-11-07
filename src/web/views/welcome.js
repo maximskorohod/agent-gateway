@@ -1,8 +1,20 @@
 // Онбординг «Connect your agent»: карточки агентов, первый ключ, уведомления, экран «It works».
 // Без инлайн-скриптов и внешних ресурсов; кнопка Copy работает через data-copy из /public/app.js.
-import { html, form, layout, enc, th, waitlistLink, fmtDate } from './html.js';
+import { html, form, layout, enc, th, waitlistLink, fmtDate, showcaseBanner } from './html.js';
 import { t, hasKey } from '../../i18n.js';
 import { KINDS, snippetFor } from '../onboarding.js';
+
+// Заглушки витрины: посетитель не должен принять адрес демо за адрес своего шлюза
+const SHOWCASE_URL = 'https://gateway.example.com';
+const SHOWCASE_TOKEN = 'YOUR_AGENT_TOKEN';
+const CHECKED_LIVE_URL = 'https://github.com/maximskorohod/agentkeygate#connect-an-agent';
+
+// Типы, где сниппет читает AGENTKEYGATE_TOKEN: без этого блока переменная осталась бы пустой и агент получил бы 401.
+const tokenEnvBlock = (text) => (text.includes('AGENTKEYGATE_TOKEN')
+  ? html`<p class="hint">${t('welcome.token_env')}</p><pre class="codes">${t('welcome.token_env_cmd')}</pre>`
+  : '');
+
+const copyButton = (target, primary = false) => html`<p class="actions"><button class="btn${primary ? ' primary' : ''}" type="button" data-copy="${target}" data-copied="${t('agents.copied')}" data-selected="${t('agents.selected')}">${t('agents.copy')}</button></p>`;
 
 const mark = (done) => (done ? html`<span class="tag">${t('welcome.done')}</span>` : '');
 
@@ -72,10 +84,7 @@ export function welcomePage({ csrf, state, providers = [], flash = null } = {}) 
 export function welcomeAgentCreated({ csrf, agent = {}, token = '', kind = 'script', publicUrl = '' } = {}) {
   const text = snippetFor(kind, { publicUrl, token });
   const how = hasKey(`welcome.how.${kind}`) ? t(`welcome.how.${kind}`) : '';
-  // Типы, где сниппет читает AGENTKEYGATE_TOKEN: без этого блока переменная осталась бы пустой и агент получил бы 401.
-  const envBlock = text.includes('AGENTKEYGATE_TOKEN')
-    ? html`<p class="hint">${t('welcome.token_env')}</p><pre class="codes">${t('welcome.token_env_cmd')}</pre>`
-    : '';
+  const envBlock = tokenEnvBlock(text);
   return layout(t('welcome.created_title', { name: agent.name }), html`
     <p class="hint">${how}</p>
     <h2>${t('welcome.snippet')}</h2>
@@ -92,6 +101,34 @@ export function welcomeAgentCreated({ csrf, agent = {}, token = '', kind = 'scri
     <p class="actions"><a class="btn" href="/welcome/check/${enc(agent.id)}" target="_blank" rel="noopener noreferrer">${t('welcome.check_open')}</a></p>
     <p><a href="/welcome">${t('welcome.back')}</a></p>
   `, { csrf });
+}
+
+/** Витрина: карточки агентов ведут на просмотр настройки, агент не создаётся. */
+export function showcaseConnect() {
+  return layout(t('welcome.title'), html`
+    ${showcaseBanner()}
+    <p class="muted">${t('showcase.connect_hint')}</p>
+    <ul class="grid">${KINDS.map((k) => html`<li><a class="tile" href="/showcase/connect/${enc(k)}"><strong>${t(`welcome.card.${k}`)}</strong><span class="muted small">${t(`welcome.card.${k}_hint`)}</span></a></li>`)}</ul>
+  `);
+}
+
+/** Витрина: настройка одного агента с заглушками адреса и токена. Статус живой проверки только в README, чтобы текст не устаревал. */
+export function showcaseAgent({ kind = 'script' } = {}) {
+  const text = snippetFor(kind, { publicUrl: SHOWCASE_URL, token: SHOWCASE_TOKEN });
+  return layout(t(`welcome.card.${kind}`), html`
+    ${showcaseBanner()}
+    <p class="hint">${hasKey(`welcome.how.${kind}`) ? t(`welcome.how.${kind}`) : ''}</p>
+    <h2>${t('welcome.snippet')}</h2>
+    <pre class="codes" id="snippet">${text}</pre>
+    ${copyButton('#snippet', true)}
+    <p class="hint">${t('showcase.token_note')}</p>
+    ${tokenEnvBlock(text)}
+    <h2>${t('welcome.say_title')}</h2>
+    <pre class="codes" id="say">${t('welcome.say_to_agent')}</pre>
+    ${copyButton('#say')}
+    <p><a href="${CHECKED_LIVE_URL}" target="_blank" rel="noopener noreferrer">${t('showcase.checked_live')}</a></p>
+    <p><a href="/showcase/connect">${t('showcase.back_connect')}</a></p>
+  `);
 }
 
 /**

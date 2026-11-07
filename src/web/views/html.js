@@ -26,7 +26,7 @@ export function setWaitlistUrl(url) {
   WAITLIST = typeof url === 'string' ? url : '';
 }
 
-// Демо-режим (GW_DEMO=1): баннер на каждой странице, без ссылки на настройки и без «Выйти» (маршруты закрыты allowlist-ом)
+// Демо-режим (GW_DEMO=1): баннер на каждой странице, вместо настроек витрина, без «Выйти» (маршруты закрыты allowlist-ом)
 let DEMO = false;
 
 /** Включает баннер демо в layout(); вызывает buildApp. */
@@ -36,6 +36,9 @@ export function setDemoMode(on) {
 
 /** Демо-режим включён: экраны скрывают кнопки маршрутов, закрытых allowlist-ом. */
 export const isDemo = () => DEMO;
+
+/** Плашка экранов витрины: отключённые поля не должны выглядеть поломкой. */
+export const showcaseBanner = () => html`<div class="warn" role="note"><p>${t('showcase.banner')}</p></div>`;
 
 /** Ссылка на лист ожидания или пустая строка; без скриптов и параметров. */
 export function waitlistLink() {
@@ -199,7 +202,8 @@ export function layout(title, body, { flash = null, nav = true, csrf = '', list 
         <a href="/keys">${t('nav.keys')}${badge}</a>
         <a href="/agents">${t('nav.agents')}</a>
         <a href="/stats">${t('nav.activity')}</a>
-        ${DEMO ? '' : html`<a href="/settings">${t('nav.settings')}</a>
+        ${DEMO ? html`<a href="/showcase/connect">${t('nav.connect')}</a>
+        <a href="/showcase/settings">${t('nav.settings')}</a>` : html`<a href="/settings">${t('nav.settings')}</a>
         ${form('/logout', html`<button class="link" type="submit">${t('nav.sign_out')}</button>`, csrf)}`}
       </nav>`
     : '';

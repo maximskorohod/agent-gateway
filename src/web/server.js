@@ -343,6 +343,27 @@ export async function registerWeb(fastify, ctx) {
       }
       return reply.redirect('/');
     });
+
+    // Витрина: экраны обычной установки только для показа, данные вымышленные, настоящие обработчики не вызываются.
+    fastify.get('/showcase/services/:slug', async (req, reply) => {
+      if (!requireOwner(req, reply)) return reply;
+      const provider = catalog.showcase().find((p) => p.slug === req.params.slug);
+      if (!provider) return html(reply, V.errorPage(404, t('error.no_service'), { nav: true, csrf: req.csrf }), 404);
+      return html(reply, V.showcaseService({ provider }));
+    });
+    fastify.get('/showcase/connect', async (req, reply) => {
+      if (!requireOwner(req, reply)) return reply;
+      return html(reply, V.showcaseConnect());
+    });
+    fastify.get('/showcase/connect/:kind', async (req, reply) => {
+      if (!requireOwner(req, reply)) return reply;
+      if (!isKind(req.params.kind)) return html(reply, V.errorPage(404, t('error.page_not_found'), { nav: true, csrf: req.csrf }), 404);
+      return html(reply, V.showcaseAgent({ kind: req.params.kind }));
+    });
+    fastify.get('/showcase/settings', async (req, reply) => {
+      if (!requireOwner(req, reply)) return reply;
+      return html(reply, V.showcaseSettings());
+    });
   }
 
   // ---- онбординг «Connect your agent» (ТЗ §5): прогресс выводится из базы; токен только на странице ответа, в адреса не попадает
@@ -377,7 +398,7 @@ export async function registerWeb(fastify, ctx) {
 
   // ---- ключи
   fastify.get('/keys', async (req, reply) => reply.redirect('/'));
-  fastify.get('/keys/new', async (req, reply) => { if (!requireOwner(req, reply)) return reply; return html(reply, V.pickProvider({ csrf: req.csrf, providers: catalog.list() })); });
+  fastify.get('/keys/new', async (req, reply) => { if (!requireOwner(req, reply)) return reply; return html(reply, V.pickProvider({ csrf: req.csrf, providers: catalog.list(), showcase: config.demo ? catalog.showcase() : null })); });
   fastify.get('/keys/new/:provider', async (req, reply) => {
     if (!requireOwner(req, reply)) return reply;
     const provider = catalog.get(req.params.provider); if (!provider) return html(reply, V.errorPage(404, t('error.no_service'), { nav: true, csrf: req.csrf }), 404);

@@ -1,5 +1,5 @@
 // Экран «Настройки», страница привязки Telegram и журнал аудита.
-import { html, form, layout, fmtDate, raw, th, isDemo } from './html.js';
+import { html, form, layout, fmtDate, raw, th, isDemo, showcaseBanner } from './html.js';
 import { t, hasKey } from '../../i18n.js';
 
 function sessionRow(s) {
@@ -147,6 +147,89 @@ export function settingsPage({ csrf, owner = {}, sessions = [], telegramConnecte
 
     <p><a href="/audit">${t('settings.audit_link')}</a></p>
   `, { csrf, flash });
+}
+
+/** Канал уведомлений на витрине: поля настоящего экрана, без форм и секретов. */
+function showcaseChannel(id, events) {
+  return html`<div class="notify-ch">
+    <h3>${t(`notify.channel.${id}`)}</h3>
+    <p class="muted">${t('settings.notify_secret_unset')}</p>
+    <label class="check"><input type="checkbox" name="enabled" value="1"> ${t('settings.notify_enabled')}</label>
+    <fieldset class="events"><legend class="muted small">${t('settings.notify_events')}</legend>
+      ${NOTIFY_EVENTS.map((e) => html`<label class="check"><input type="checkbox" name="events" value="${e}"${events.includes(e) ? raw(' checked') : ''}> ${t(evKey(e))}</label>`)}
+    </fieldset>
+    ${id === 'slack'
+    ? html`<label>${t('settings.slack_webhook')}
+        <input type="password" autocomplete="off" placeholder="https://hooks.slack.com/services/…">
+      </label>`
+    : html`<label>${t('settings.smtp_host')}<input autocomplete="off" placeholder="smtp.example.com"></label>
+      <label>${t('settings.smtp_port')}
+        <select><option>587 STARTTLS</option><option>465 TLS</option></select>
+      </label>
+      <label>${t('settings.smtp_user')}<input autocomplete="off"></label>
+      <label>${t('settings.smtp_pass')}<input type="password" autocomplete="off"></label>
+      <label>${t('settings.smtp_from')}<input autocomplete="off" placeholder="gateway@example.com"></label>
+      <label>${t('settings.smtp_to')}<input autocomplete="off" placeholder="you@example.com"></label>`}
+    <button class="btn" type="button">${t('settings.notify_secret_save')}</button>
+  </div>`;
+}
+
+// Вымышленные сессии витрины, настоящие сессии посетителей сюда не передаются: дата задана числом
+const SHOWCASE_SESSIONS = [
+  { key: 'showcase.session_1', current: true, created_at: 1790000000 },
+  { key: 'showcase.session_2', current: false, created_at: 1789500000 },
+];
+
+/**
+ * Витрина настроек в демо: экран обычной установки с отключёнными полями. При изменении settingsPage обновлять вручную.
+ * Аргументов нет намеренно: данные шлюза и посетителей до этого экрана не доходят.
+ */
+export function showcaseSettings() {
+  const events = ['request.created', 'security'];
+  return layout(t('settings.title'), html`
+    ${showcaseBanner()}
+    <fieldset disabled>
+      <section class="card">
+        <h2>${t('settings.pw_title')}</h2>
+        <label>${t('settings.pw_current')} <input type="password" autocomplete="off"></label>
+        <label>${t('settings.pw_new')} <input type="password" autocomplete="off"></label>
+        <label>${t('settings.pw_repeat')} <input type="password" autocomplete="off"></label>
+        <button class="btn primary" type="button">${t('settings.pw_change')}</button>
+        <p class="hint">${t('settings.pw_hint')}</p>
+      </section>
+      <section class="card">
+        <h2>${t('settings.2fa_title')}</h2>
+        <p>${t('settings.2fa_status')} <strong>${t('settings.2fa_on')}</strong></p>
+        <div class="actions">
+          <button class="btn" type="button">${t('settings.2fa_reissue')}</button>
+          <button class="btn" type="button">${t('settings.2fa_backup')}</button>
+        </div>
+        <p class="hint">${t('settings.2fa_hint')}</p>
+      </section>
+      <section class="card">
+        <h2>Telegram</h2>
+        <p class="muted">${t('settings.tg_none')}</p>
+        <label>${t('settings.bot_token')} <input type="password" autocomplete="off"></label>
+        <button class="btn primary" type="button">${t('settings.tg_connect')}</button>
+      </section>
+      <section class="card">
+        <h2>${t('settings.notify_title')}</h2>
+        <p class="hint">${t('settings.notify_hint')}</p>
+        ${showcaseChannel('slack', events)}
+        ${showcaseChannel('email', events)}
+      </section>
+      <section class="card">
+        <h2>${t('settings.sessions_title')}</h2>
+        <ul class="list">${SHOWCASE_SESSIONS.map((s) => sessionRow({ ua: t(s.key), current: s.current, created_at: s.created_at }))}</ul>
+        <button class="btn" type="button">${t('settings.sign_out_all')}</button>
+      </section>
+      <section class="card">
+        <h2>${t('settings.panic_title')}</h2>
+        <p class="muted">${t('settings.panic_hint')}</p>
+        <button class="btn btn-danger" type="button">${t('settings.panic')}</button>
+      </section>
+    </fieldset>
+  `);
 }
 
 /** Страница привязки Telegram: «Напишите боту /start {code}». Кнопка «Проверить» перезагружает страницу. */

@@ -494,13 +494,16 @@ function checkProviderFilter(f, bad) {
   }
 }
 
+// Порядок витрины демо: CRM первыми
+const SHOWCASE_FIRST = ['bitrix24', 'bitrix24-box', 'amocrm', 'hubspot', 'pipedrive'];
+
 /**
  * Загружает и валидирует каталог.
  * @param {string} yamlPath
  * @param {{ demo?: boolean }} [opts] demo (GW_DEMO=1): в каталоге остаются только провайдеры с demoOnly: true;
  *   вне демо такие провайдеры скрыты
  * @returns {{providers: Map<string, object>, get: (slug:string) => object|undefined,
- *   list: () => object[], redactHeaders: () => string[]}}
+ *   list: () => object[], showcase: () => object[], redactHeaders: () => string[]}}
  */
 export function loadCatalog(yamlPath, { demo = false } = {}) {
   const doc = parse(fs.readFileSync(yamlPath, 'utf8')) || {};
@@ -527,6 +530,15 @@ export function loadCatalog(yamlPath, { demo = false } = {}) {
     secretForms,
     get: (slug) => providers.get(slug),
     list: () => [...providers.values()],
+    /**
+     * Витрина демо: описания всех сервисов обычной установки только для показа. Вызовы, заявки и
+     * ключи идут через get(), а там в демо по-прежнему один Demo CRM. CRM первыми, «Другой» последним.
+     */
+    showcase() {
+      const rank = (p) => { const i = SHOWCASE_FIRST.indexOf(p.slug); return i >= 0 ? i : (p.slug === 'other' ? 1000 : 100); };
+      return [...all.values()].filter((p) => p.demoOnly !== true).map((p, i) => [p, i])
+        .sort(([a, i], [b, j]) => rank(a) - rank(b) || i - j).map(([p]) => p);
+    },
     redactHeaders() {
       const names = new Set(FIXED_REDACT);
       for (const p of providers.values()) {

@@ -145,6 +145,20 @@ await step('11. /settings закрыт в демо: 404', async () => {
   expect(res.status === 404, `status ${res.status}`);
 });
 
+await step('11a. витрина открыта только на чтение, настоящие экраны закрыты', async () => {
+  for (const p of ['/showcase/connect', '/showcase/connect/claude-code', '/showcase/settings', '/showcase/services/bitrix24']) {
+    const res = await get(p);
+    expect(res.status === 200, `${p}: status ${res.status}`);
+    expect(!(await res.text()).includes('<form'), `${p}: на витрине есть форма`);
+  }
+  for (const p of ['/welcome', '/keys/new/bitrix24']) {
+    const res = await get(p);
+    expect(res.status === 404, `${p}: status ${res.status}`);
+  }
+  const res = await post('/showcase/settings', { _csrf: homeCsrf });
+  expect(res.status === 404, `POST /showcase/settings: status ${res.status}`);
+});
+
 await step('12. анонимный POST /agents с неверным CSRF даёт 403', async () => {
   const res = await post('/agents', { _csrf: 'x', name: 'e2e' }, { anonymous: true });
   expect(res.status === 403, `status ${res.status}`);

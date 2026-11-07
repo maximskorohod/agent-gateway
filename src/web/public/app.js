@@ -49,7 +49,11 @@
   });
 
   // Подсветка текущего раздела в шапке.
-  const section = '/' + (location.pathname.split('/')[1] || 'keys');
+  const parts = location.pathname.split('/');
+  // Витрина демо: сервисы относятся к «Ключам», остальное к своему пункту меню
+  const section = parts[1] === 'showcase'
+    ? (parts[2] === 'services' ? '/keys' : `/showcase/${parts[2]}`)
+    : '/' + (parts[1] || 'keys');
   document.querySelectorAll('.nav a[href]').forEach((a) => {
     const href = a.getAttribute('href');
     if (href === section || (section === '/audit' && href === '/settings')) a.setAttribute('aria-current', 'page');

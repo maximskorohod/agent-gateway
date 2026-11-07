@@ -208,6 +208,10 @@ export function demoRouteGuard(fastify, { repo, vault = null, reset = null, logg
     [GET, /^\/keys$/],
     [GET, /^\/keys\/new$/], // выбор сервиса: в демо каталог из одного провайдера
     [GET, /^\/keys\/new\/demo$/],
+    // Витрина: только показ, форм и записи нет; сами экраны настроек, онбординга и ключей остаются закрытыми
+    [GET, /^\/showcase\/(connect|settings)$/],
+    [GET, /^\/showcase\/connect\/[a-z-]+$/],
+    [GET, /^\/showcase\/services\/[a-z0-9-]+$/],
     [GET, /^\/keys\/([^/]+)$/],
     [GET, /^\/(agents|stats|audit)$/],
     [['POST'], /^\/keys\/([^/]+)\/(policy|filter)$/, (m) => isDemoKey(dec(m[1]))],
