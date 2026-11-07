@@ -831,6 +831,7 @@ export default {
   'audit.ev.proxy_call': 'API call',
   'audit.ev.proxy_preview': 'Filter check call',
   'audit.ev.proxy_no_secret': 'Call failed: key missing in the vault',
+  'audit.ev.proxy_denied': 'Call blocked',
   'audit.ev.grant_auto': 'Pass issued without asking',
   'audit.ev.request_create': 'Access request',
   'audit.ev.request_approve': 'Request approved',
