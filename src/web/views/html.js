@@ -189,7 +189,7 @@ export function plural(n, [one, few, many]) {
 
 // Знак в шапке: проём ворот со стрелкой, рисуется цветом акцента (SVG без скриптов).
 const BRAND_MARK = raw('<svg class="mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">'
-  + '<rect class="mark-bg" x="2" y="2" width="20" height="20" rx="6"/>'
+  + '<rect class="mark-bg" x="2" y="2" width="20" height="20" rx="0"/>'
   + '<path class="mark-fg" d="M7 17V9a5 5 0 0 1 10 0v8M12 11v5m-2-2 2 2 2-2"/></svg>');
 
 /**
