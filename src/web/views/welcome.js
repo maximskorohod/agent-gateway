@@ -1,8 +1,9 @@
 // Онбординг «Connect your agent»: карточки агентов, первый ключ, уведомления, экран «It works».
 // Без инлайн-скриптов и внешних ресурсов; кнопка Copy работает через data-copy из /public/app.js.
-import { html, form, layout, enc, th, waitlistLink, fmtDate, showcaseBanner } from './html.js';
+import { html, form, layout, layoutIcon, enc, th, waitlistLink, fmtDate, showcaseBanner } from './html.js';
 import { t, hasKey } from '../../i18n.js';
 import { KINDS, snippetFor } from '../onboarding.js';
+import { notifyChoice, telegramLinkStep } from './notify-setup.js';
 
 // Заглушки витрины: посетитель не должен принять адрес демо за адрес своего шлюза
 const SHOWCASE_URL = 'https://gateway.example.com';
@@ -17,10 +18,25 @@ const tokenEnvBlock = (text) => (text.includes('AGENTKEYGATE_TOKEN')
 const copyButton = (target, primary = false) => html`<p class="actions"><button class="btn${primary ? ' primary' : ''}" type="button" data-copy="${target}" data-copied="${t('agents.copied')}" data-selected="${t('agents.selected')}">${t('agents.copy')}</button></p>`;
 
 const mark = (done) => (done ? html`<span class="tag">${t('welcome.done')}</span>` : '');
+const agentLogo = (kind) => layoutIcon(`agent-${kind}`);
+const agentHead = (kind, caption) => html`<div class="head-ico">${agentLogo(kind)}<span class="muted">${caption}</span></div>`;
 
 function agentCards(csrf) {
   return html`<ul class="grid">${KINDS.map((k) => html`<li>${form(`/welcome/agent/${enc(k)}`, html`
-      <button class="tile" type="submit"><strong>${t(`welcome.card.${k}`)}</strong><span class="muted small">${t(`welcome.card.${k}_hint`)}</span></button>`, csrf)}</li>`)}</ul>`;
+      <button class="tile" type="submit">${agentLogo(k)}<strong>${t(`welcome.card.${k}`)}</strong><span class="muted small">${t(`welcome.card.${k}_hint`)}</span></button>`, csrf)}</li>`)}</ul>`;
+}
+
+/** Шаг уведомлений: готово — ссылка на настройки; ждём Start у бота — кнопка на бота; иначе выбор канала. */
+function notifyStep(csrf, state, tgCode, botUsername) {
+  const open = html`<p><a class="btn" href="/settings">${t('welcome.s3_open')}</a></p>`;
+  if (state.notify && !tgCode) return open;
+  const post = (mode, inner) => form(`/welcome/notify/${enc(mode)}`, inner, csrf);
+  return html`
+    ${tgCode ? telegramLinkStep({ post, code: tgCode, botUsername }) : notifyChoice({ post })}
+    <div class="actions">
+      ${form('/welcome/skip-notify', html`<button class="btn" type="submit">${t('welcome.s3_skip')}</button>`, csrf)}
+      <a class="btn" href="/settings">${t('notify_setup.other')}</a>
+    </div>`;
 }
 
 /** Подпись «Get a key →»: только https-адрес из каталога. */
@@ -47,7 +63,7 @@ function worksBlock(calls) {
 }
 
 /** Главная страница онбординга. state — из onboardingState. */
-export function welcomePage({ csrf, state, providers = [], flash = null } = {}) {
+export function welcomePage({ csrf, state, providers = [], flash = null, tgCode = null, botUsername = null } = {}) {
   return layout(t('welcome.title'), html`
     <p class="muted">${t('welcome.intro')} <strong>${t('welcome.progress', { n: state.count })}</strong></p>
     ${state.calls > 0 ? worksBlock(state.calls) : ''}
@@ -65,10 +81,7 @@ export function welcomePage({ csrf, state, providers = [], flash = null } = {}) 
     <section class="card">
       <h2>${t('welcome.s3_title')} ${mark(state.notify)}</h2>
       <p class="hint">${t('welcome.s3_hint')}</p>
-      <div class="actions">
-        <a class="btn" href="/settings">${t('welcome.s3_open')}</a>
-        ${state.notify ? '' : form('/welcome/skip-notify', html`<button class="btn" type="submit">${t('welcome.s3_skip')}</button>`, csrf)}
-      </div>
+      ${notifyStep(csrf, state, tgCode, botUsername)}
     </section>
     <div class="actions">
       ${form('/welcome/skip', html`<button class="btn" type="submit">${t('welcome.skip_all')}</button>`, csrf)}
@@ -86,6 +99,7 @@ export function welcomeAgentCreated({ csrf, agent = {}, token = '', kind = 'scri
   const how = hasKey(`welcome.how.${kind}`) ? t(`welcome.how.${kind}`) : '';
   const envBlock = tokenEnvBlock(text);
   return layout(t('welcome.created_title', { name: agent.name }), html`
+    ${agentHead(kind, t(`welcome.card.${kind}`))}
     <p class="hint">${how}</p>
     <h2>${t('welcome.snippet')}</h2>
     <pre class="codes" id="snippet">${text}</pre>
@@ -108,7 +122,7 @@ export function showcaseConnect() {
   return layout(t('welcome.title'), html`
     ${showcaseBanner()}
     <p class="muted">${t('showcase.connect_hint')}</p>
-    <ul class="grid">${KINDS.map((k) => html`<li><a class="tile" href="/showcase/connect/${enc(k)}"><strong>${t(`welcome.card.${k}`)}</strong><span class="muted small">${t(`welcome.card.${k}_hint`)}</span></a></li>`)}</ul>
+    <ul class="grid">${KINDS.map((k) => html`<li><a class="tile" href="/showcase/connect/${enc(k)}">${agentLogo(k)}<strong>${t(`welcome.card.${k}`)}</strong><span class="muted small">${t(`welcome.card.${k}_hint`)}</span></a></li>`)}</ul>
   `);
 }
 
@@ -117,6 +131,7 @@ export function showcaseAgent({ kind = 'script' } = {}) {
   const text = snippetFor(kind, { publicUrl: SHOWCASE_URL, token: SHOWCASE_TOKEN });
   return layout(t(`welcome.card.${kind}`), html`
     ${showcaseBanner()}
+    ${agentHead(kind, t('showcase.agent_caption'))}
     <p class="hint">${hasKey(`welcome.how.${kind}`) ? t(`welcome.how.${kind}`) : ''}</p>
     <h2>${t('welcome.snippet')}</h2>
     <pre class="codes" id="snippet">${text}</pre>

@@ -112,6 +112,9 @@ test('настоящие экраны остаются закрытыми', asyn
   for (const p of ['/settings', '/settings/password', '/welcome', `/welcome/check/${DEMO_AGENT_ID}`, '/keys/new/bitrix24', '/keys/new/openai', '/keys/new/other', '/showcase', '/showcase/', '/showcase/services', '/showcase/connect/x/y']) {
     assert.equal((await c.get(p)).status, 404, p);
   }
+  for (const p of ['/welcome/notify/telegram', '/welcome/notify/check', '/welcome/notify/slack']) {
+    assert.equal((await c.post(p, { webhook: 'x' })).status, 404, `POST ${p}`);
+  }
   for (const p of ['/showcase/services/demo', '/showcase/services/nope', '/showcase/connect/nope', '/showcase/connect/UPPER']) {
     assert.equal((await c.get(p)).status, 404, p);
   }

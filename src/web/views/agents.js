@@ -1,5 +1,5 @@
 // Экран агентов: список, привязка ключей, создание, токен (показывается один раз).
-import { html, raw, form, layout, enc, fmtDate, th, keyName, isDemo } from './html.js';
+import { html, raw, form, layout, lineIcon, enc, fmtDate, th, keyName, isDemo } from './html.js';
 import { t } from '../../i18n.js';
 import { DEMO_AGENT_ID } from '../../demo/reset.js';
 
@@ -37,7 +37,7 @@ function agentRow(a, csrf, credentials, ids, providers) {
     <li class="card">
       <div class="agent">
         <div class="grow">
-          <strong>${a.name}</strong>
+          <strong class="nav-item">${lineIcon('agents')}<span>${a.name}</span></strong>
           <span class="muted small">${a.enabled ? t('agents.enabled') : t('agents.disabled')} · ${seen}</span>
           <span class="muted small">${t('agents.keys_label', { keys: keysText(a, credentials, ids, providers) })}</span>
         </div>

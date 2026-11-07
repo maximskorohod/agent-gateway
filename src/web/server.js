@@ -25,6 +25,7 @@ import { readChannelMeta, writeChannelMeta, checkSlackWebhook, checkSmtp, codeOf
 import { DEMO_AGENT_ID, DEMO_CREDENTIAL_ID } from '../demo/reset.js';
 
 const TOTP_RECENT = 300;
+const WELCOME_SERVICES = 8; // на шаге онбординга самые частые сервисы, полный список по кнопке
 const DEMO_RUNS_MAX = 1000; // столько же, сколько плашек: демо рассчитано на 500 сессий
 
 export async function registerWeb(fastify, ctx) {
@@ -202,7 +203,16 @@ export async function registerWeb(fastify, ctx) {
       }
       if (mode === 'check') {
         if (auth.getUser(req.session.userId)?.tgChatId) { repo.setMeta('setup_tg_code', ''); repo.setMeta('setup_backup_codes', ''); repo.setSetupDone(); repo.setMeta('onboarding_pending', '1'); repo.audit('owner', 'setup.done', null, { telegram: true }); return reply.redirect('/welcome'); }
+        renewTgCode();
         flash(req, 'error', t('flash.bot_no_start')); return reply.redirect('/setup');
+      }
+      if (mode === 'slack') {
+        if (!requireRecentTotp(req, reply, '/setup')) return reply;
+        const r = await connectSlack(req.body.webhook);
+        if (r.error) { flash(req, 'error', r.error); return reply.redirect('/setup'); }
+        repo.setMeta('setup_backup_codes', ''); repo.setSetupDone(); repo.setMeta('onboarding_pending', '1'); repo.audit('owner', 'setup.done', null, { slack: true });
+        flash(req, 'ok', t('flash.slack_connected'));
+        return reply.redirect('/welcome');
       }
       if (mode === 'skip') { repo.setMeta('setup_backup_codes', ''); repo.setSetupDone(); repo.setMeta('onboarding_pending', '1'); repo.audit('owner', 'setup.done', null, { telegram: false }); return reply.redirect('/welcome'); }
       // «Дальше» после резервных кодов
@@ -231,6 +241,46 @@ export async function registerWeb(fastify, ctx) {
       repo.audit('owner', 'telegram.token', null, null);
       return { code, username: await bot.getUsername() };
     } catch (e) { logger.warn({ err: e.message }, 'telegram connect'); return { error: t('error.tg_connect_failed') }; }
+  }
+
+  // Код живёт 15 минут: без нового кода просроченная ссылка на бота стала бы тупиком, токен вводить заново не нужно
+  function renewTgCode() {
+    if (repo.getMeta('setup_tg_code')) repo.setMeta('setup_tg_code', makeShortCode(repo, 'tg_link', 900));
+  }
+
+  /** Тест канала с общим таймаутом. -> null при успехе, иначе код ошибки без текста (в нём может быть путь вебхука). */
+  async function testChannel(id) {
+    const ch = notify.channels?.find((c) => c.id === id);
+    if (!ch) return 'not_configured';
+    let timer;
+    try {
+      await Promise.race([ch.test(), new Promise((_, rej) => { timer = setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), 12_000); })]);
+      return null;
+    } catch (e) {
+      const code = codeOf(e);
+      logger.error({ channel: id, errCode: code }, 'notify test failed');
+      return code;
+    } finally { clearTimeout(timer); }
+  }
+
+  /**
+   * Подключение Slack за один шаг: проверка адреса, тестовое сообщение, включение канала.
+   * Не дошло — прежняя настройка возвращается, нерабочий адрес не остаётся в сейфе. Вызывающий обязан проверить свежий код.
+   */
+  async function connectSlack(raw) {
+    const chk = checkSlackWebhook(raw);
+    if (!chk.ok) return { error: t(chk.error) };
+    const meta = readChannelMeta(repo, 'slack');
+    const previous = meta.configured ? await vault.get(NOTIFY_SECRET.slack) : null;
+    await vault.put(NOTIFY_SECRET.slack, chk.value);
+    const code = await testChannel('slack');
+    if (code) {
+      if (previous) await vault.put(NOTIFY_SECRET.slack, previous); else await vault.del(NOTIFY_SECRET.slack);
+      return { error: t('flash.notify_test_fail', { code }) };
+    }
+    writeChannelMeta(repo, 'slack', { ...meta, enabled: true, configured: true });
+    repo.audit('owner', 'notify.secret', 'slack', null);
+    return {};
   }
 
   // ---- вход
@@ -296,7 +346,7 @@ export async function registerWeb(fastify, ctx) {
   fastify.get('/', async (req, reply) => {
     if (!requireOwner(req, reply)) return reply;
     // свежая установка: ссылка на онбординг (пропуск, агент или ключ её убирают); сам мастер уводит на /welcome
-    const ob = onboardingState(repo);
+    const ob = onboardingState(repo, { telegramConnected: telegramConnected() });
     repo.expireRequests();
     const pendingList = repo.listPending();
     const credentials = repo.listCredentials();
@@ -369,7 +419,30 @@ export async function registerWeb(fastify, ctx) {
   // ---- онбординг «Connect your agent» (ТЗ §5): прогресс выводится из базы; токен только на странице ответа, в адреса не попадает
   fastify.get('/welcome', async (req, reply) => {
     if (!requireOwner(req, reply)) return reply;
-    return html(reply, V.welcomePage({ csrf: req.csrf, state: onboardingState(repo, { telegramConnected: telegramConnected() }), providers: catalog.list().filter((p) => p.onboarding !== false), flash: takeFlash(req) }));
+    const connected = telegramConnected();
+    const tgCode = connected ? null : repo.getMeta('setup_tg_code') || null;
+    const botUsername = tgCode && tg.current() ? await tg.current().getUsername().catch(() => null) : null;
+    return html(reply, V.welcomePage({ csrf: req.csrf, state: onboardingState(repo, { telegramConnected: connected }), providers: catalog.showcase().filter((p) => p.onboarding !== false).slice(0, WELCOME_SERVICES), flash: takeFlash(req), tgCode, botUsername }));
+  });
+  // Канал заявок прямо из онбординга: после шага человек возвращается сюда, а не теряется в настройках
+  fastify.post('/welcome/notify/telegram', async (req, reply) => {
+    if (!requireOwner(req, reply)) return reply;
+    if (!requireRecentTotp(req, reply, '/welcome')) return reply;
+    const r = await connectTelegram(req, String(req.body.token || ''));
+    if (r.error) flash(req, 'error', r.error);
+    return reply.redirect('/welcome');
+  });
+  fastify.post('/welcome/notify/check', async (req, reply) => {
+    if (!requireOwner(req, reply)) return reply;
+    if (auth.getUser(req.session.userId)?.tgChatId) { repo.setMeta('setup_tg_code', ''); flash(req, 'ok', t('flash.tg_connected')); } else { renewTgCode(); flash(req, 'error', t('flash.bot_no_start')); }
+    return reply.redirect('/welcome');
+  });
+  fastify.post('/welcome/notify/slack', async (req, reply) => {
+    if (!requireOwner(req, reply)) return reply;
+    if (!requireRecentTotp(req, reply, '/welcome')) return reply;
+    const r = await connectSlack(req.body.webhook);
+    flash(req, r.error ? 'error' : 'ok', r.error ?? t('flash.slack_connected'));
+    return reply.redirect('/welcome');
   });
   fastify.post('/welcome/agent/:kind', async (req, reply) => {
     if (!requireOwner(req, reply)) return reply;
@@ -431,7 +504,9 @@ export async function registerWeb(fastify, ctx) {
     if (protect) repo.updateCredentialFilter(id, protect);
     repo.audit('owner', 'credential.create', id, { provider: provider.slug, mode: policy.mode, ...(protect?.readOnly && { read_only: true }), ...(protect?.mask && { mask: true }) });
     if (!flashes.has(req.session.idHash)) flash(req, 'ok', t('flash.key_added', { name: provider.name }));
-    return reply.redirect('/');
+    // Первый ключ на свежей установке: возвращаем к следующему шагу, ссылка с главной к этому моменту уже исчезла
+    const ob = onboardingState(repo, { telegramConnected: telegramConnected() });
+    return reply.redirect(ob.pending && !ob.skipped && ob.count < 3 ? '/welcome' : '/');
   });
   fastify.get('/keys/:id', async (req, reply) => {
     if (!requireOwner(req, reply)) return reply;
@@ -702,7 +777,7 @@ export async function registerWeb(fastify, ctx) {
   });
   fastify.post('/settings/telegram/check', async (req, reply) => {
     if (!requireOwner(req, reply)) return reply;
-    if (auth.getUser(req.session.userId)?.tgChatId) { repo.setMeta('setup_tg_code', ''); flash(req, 'ok', t('flash.tg_connected')); } else flash(req, 'error', t('flash.bot_no_start'));
+    if (auth.getUser(req.session.userId)?.tgChatId) { repo.setMeta('setup_tg_code', ''); flash(req, 'ok', t('flash.tg_connected')); } else { renewTgCode(); flash(req, 'error', t('flash.bot_no_start')); }
     return reply.redirect('/settings');
   });
   fastify.post('/settings/telegram/disconnect', async (req, reply) => {
@@ -759,17 +834,9 @@ export async function registerWeb(fastify, ctx) {
   fastify.post('/settings/notify/:id/test', async (req, reply) => {
     if (!requireOwner(req, reply)) return reply;
     const id = notifyId(req, reply); if (!id) return reply;
-    const ch = notify.channels?.find((c) => c.id === id);
-    if (!readChannelMeta(repo, id).configured || !ch) { flash(req, 'error', t('flash.notify_no_secret')); return reply.redirect('/settings'); }
-    let timer;
-    try {
-      await Promise.race([ch.test(), new Promise((_, rej) => { timer = setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), 12_000); })]);
-      flash(req, 'ok', t('flash.notify_test_ok'));
-    } catch (e) {
-      const code = codeOf(e);
-      logger.error({ channel: id, errCode: code }, 'notify test failed'); // без текста ошибки: в нём может быть путь вебхука
-      flash(req, 'error', t('flash.notify_test_fail', { code }));
-    } finally { clearTimeout(timer); }
+    if (!readChannelMeta(repo, id).configured || !notify.channels?.some((c) => c.id === id)) { flash(req, 'error', t('flash.notify_no_secret')); return reply.redirect('/settings'); }
+    const code = await testChannel(id);
+    if (code) flash(req, 'error', t('flash.notify_test_fail', { code })); else flash(req, 'ok', t('flash.notify_test_ok'));
     return reply.redirect('/settings');
   });
   fastify.post('/settings/notify/:id', async (req, reply) => {

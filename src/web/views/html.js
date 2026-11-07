@@ -37,6 +37,24 @@ export function setDemoMode(on) {
 /** Демо-режим включён: экраны скрывают кнопки маршрутов, закрытых allowlist-ом. */
 export const isDemo = () => DEMO;
 
+// Контурные значки меню: только геометрия, без внешних файлов и без атрибута style (CSP)
+const LINE_ICONS = {
+  keys: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/>',
+  agents: '<rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M9 13v2M15 13v2"/>',
+  activity: '<path d="M3 12h4l3 8 4-16 3 8h4"/>',
+  connect: '<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/>',
+  settings: '<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h8M16 18h4"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="14" cy="18" r="2"/>',
+  signout: '<path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h9"/>',
+};
+
+/** Контурный значок по имени. */
+export const lineIcon = (name) => raw(`<svg class="line-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${LINE_ICONS[name]}</svg>`);
+
+/** Логотип из assets/icons по имени файла. */
+export const layoutIcon = (name, size = 32) => html`<img class="ico" src="/public/icons/${enc(name)}.svg" alt="" width="${size}" height="${size}">`;
+
+const navItem = (icon, label) => html`<span class="nav-item">${lineIcon(icon)}<span>${label}</span></span>`;
+
 /** Плашка экранов витрины: отключённые поля не должны выглядеть поломкой. */
 export const showcaseBanner = () => html`<div class="warn" role="note"><p>${t('showcase.banner')}</p></div>`;
 
@@ -199,12 +217,12 @@ export function layout(title, body, { flash = null, nav = true, csrf = '', list 
   // Компьютер: боковое меню. Телефон: то же меню полосой внизу экрана. Работает без JS.
   const navBox = nav
     ? html`<nav class="nav" aria-label="${t('nav.sections')}">
-        <a href="/keys">${t('nav.keys')}${badge}</a>
-        <a href="/agents">${t('nav.agents')}</a>
-        <a href="/stats">${t('nav.activity')}</a>
-        ${DEMO ? html`<a href="/showcase/connect">${t('nav.connect')}</a>
-        <a href="/showcase/settings">${t('nav.settings')}</a>` : html`<a href="/settings">${t('nav.settings')}</a>
-        ${form('/logout', html`<button class="link" type="submit">${t('nav.sign_out')}</button>`, csrf)}`}
+        <a href="/keys">${navItem('keys', t('nav.keys'))}${badge}</a>
+        <a href="/agents">${navItem('agents', t('nav.agents'))}</a>
+        <a href="/stats">${navItem('activity', t('nav.activity'))}</a>
+        ${DEMO ? html`<a href="/showcase/connect">${navItem('connect', t('nav.connect'))}</a>
+        <a href="/showcase/settings">${navItem('settings', t('nav.settings'))}</a>` : html`<a href="/settings">${navItem('settings', t('nav.settings'))}</a>
+        ${form('/logout', html`<button class="link" type="submit">${navItem('signout', t('nav.sign_out'))}</button>`, csrf)}`}
       </nav>`
     : '';
   // Ссылка на лист ожидания в баннере показывается, только если адрес задан (waitlistLink() пуст без него)

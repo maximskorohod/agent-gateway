@@ -170,6 +170,7 @@ function pendingRow(r, providers) {
 export function requestPage({ csrf, request: r, providers = [], filterLine: line = null, flash = null } = {}) {
   const id = enc(r.id);
   return layout(t('request.title', { agent: r.agent_name, target: requestTarget(r, providers) }), html`
+    <p class="center"><img class="ico" src="/public/icons/${enc(r.provider)}.svg" alt="" width="32" height="32"></p>
     <p class="center"><span class="pill">${t('request.waiting')}</span></p>
     <dl class="facts">
       <div><dt>${t('request.for')}</dt><dd>${fmtDuration(r.ttl)}</dd></div>

@@ -175,7 +175,7 @@ test('журнал аудита: названия событий из слова
 test('ru: раздел называется «Активность», дата без неоднозначности', () => {
   initI18n('ru');
   try {
-    assert.match(V.keysPage({ csrf: 'c' }), /<a href="\/stats">Активность<\/a>/);
+    assert.match(V.keysPage({ csrf: 'c' }), /<a href="\/stats"><span class="nav-item"><svg[^>]*>.*?<\/svg><span>Активность<\/span><\/span><\/a>/);
     assert.match(V.statsPage({ csrf: 'c', agentId: 'a1', agents: [{ id: 'a1', name: 'бот' }] }), /<h1>Активность: бот<\/h1>/);
   } finally { initI18n('en'); }
   // 4 ноября: в en «4 Nov 2026», а не «04/11/2026» (день и месяц не путаются)

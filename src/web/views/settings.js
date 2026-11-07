@@ -1,6 +1,13 @@
 // Экран «Настройки», страница привязки Telegram и журнал аудита.
-import { html, form, layout, fmtDate, raw, th, isDemo, showcaseBanner } from './html.js';
+import { html, form, layout, layoutIcon, fmtDate, raw, th, isDemo, showcaseBanner } from './html.js';
 import { t, hasKey } from '../../i18n.js';
+import { BOTFATHER_URL, slackCreateUrl, telegramStartUrl } from '../onboarding.js';
+
+const outLink = (href, text) => html`<p><a class="btn" href="${href}" target="_blank" rel="noopener noreferrer">${text}</a></p>`;
+// Заголовок раздела с логотипом канала
+const channelTitle = (slug, title, tag = 'h2') => (tag === 'h3'
+  ? html`<div class="head-ico">${layoutIcon(slug, 24)}<h3>${title}</h3></div>`
+  : html`<div class="head-ico">${layoutIcon(slug, 24)}<h2>${title}</h2></div>`);
 
 function sessionRow(s) {
   return html`<li class="item">
@@ -20,6 +27,7 @@ function telegramBlock(csrf, telegramConnected, botUsername) {
   }
   return html`
     <p class="muted">${t('settings.tg_none')}</p>
+    ${outLink(BOTFATHER_URL, t('notify_setup.tg_open_father'))}
     ${form('/settings/telegram/connect', html`
       <label>${t('settings.bot_token')}
         <input type="password" name="token" autocomplete="off" autocapitalize="off" spellcheck="false" required>
@@ -44,6 +52,7 @@ function notifyChannel(csrf, id, st) {
   `, csrf);
   const secret = id === 'slack'
     ? form('/settings/notify/slack/secret', html`
+        ${outLink(slackCreateUrl(), t('notify_setup.slack_open'))}
         <label>${t('settings.slack_webhook')}
           <input type="password" name="webhook" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://hooks.slack.com/services/…" required>
         </label>
@@ -59,7 +68,7 @@ function notifyChannel(csrf, id, st) {
         <label>${t('settings.smtp_to')}<input name="to" autocomplete="off" placeholder="you@example.com" required></label>
         <button class="btn primary" type="submit">${t('settings.notify_secret_save')}</button>`, csrf);
   return html`<div class="notify-ch">
-    <h3>${t(`notify.channel.${id}`)}</h3>
+    ${channelTitle(id, t(`notify.channel.${id}`), 'h3')}
     <p class="muted">${st.configured ? t('settings.notify_secret_set') : t('settings.notify_secret_unset')}</p>
     ${toggle}
     <details><summary>${t('settings.notify_secret_change')}</summary>${secret}</details>
@@ -114,9 +123,10 @@ export function settingsPage({ csrf, owner = {}, sessions = [], telegramConnecte
     </section>` : ''}
 
     <section class="card">
-      <h2>Telegram</h2>
+      ${channelTitle('telegram', 'Telegram')}
       ${telegramBlock(csrf, telegramConnected, botUsername)}
       ${!telegramConnected && tgCode ? html`
+        ${telegramStartUrl(botUsername, tgCode) ? outLink(telegramStartUrl(botUsername, tgCode), t('notify_setup.tg_open_bot')) : ''}
         <p class="notice">${th(botUsername ? 'settings.tg_write' : 'settings.tg_write_nobot', { bot: html`<strong>@${botUsername}</strong>`, command: html`<code>/start ${tgCode}</code>` })}</p>
         ${form('/settings/telegram/check', html`<button class="btn primary" type="submit">${t('settings.check')}</button>`, csrf)}` : ''}
     </section>
@@ -152,7 +162,7 @@ export function settingsPage({ csrf, owner = {}, sessions = [], telegramConnecte
 /** Канал уведомлений на витрине: поля настоящего экрана, без форм и секретов. */
 function showcaseChannel(id, events) {
   return html`<div class="notify-ch">
-    <h3>${t(`notify.channel.${id}`)}</h3>
+    ${channelTitle(id, t(`notify.channel.${id}`), 'h3')}
     <p class="muted">${t('settings.notify_secret_unset')}</p>
     <label class="check"><input type="checkbox" name="enabled" value="1"> ${t('settings.notify_enabled')}</label>
     <fieldset class="events"><legend class="muted small">${t('settings.notify_events')}</legend>
@@ -207,7 +217,7 @@ export function showcaseSettings() {
         <p class="hint">${t('settings.2fa_hint')}</p>
       </section>
       <section class="card">
-        <h2>Telegram</h2>
+        ${channelTitle('telegram', 'Telegram')}
         <p class="muted">${t('settings.tg_none')}</p>
         <label>${t('settings.bot_token')} <input type="password" autocomplete="off"></label>
         <button class="btn primary" type="button">${t('settings.tg_connect')}</button>

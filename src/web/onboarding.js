@@ -31,6 +31,23 @@ export function onboardingState(repo, { telegramConnected = false } = {}) {
 /** Нужно ли с корня уводить на /welcome: свежая установка, где онбординг не пропущен, нет ни агента, ни ключа. */
 export const needsWelcome = (s) => s.pending && !s.skipped && !s.agent && !s.key;
 
+export const BOTFATHER_URL = 'https://t.me/BotFather';
+
+/**
+ * Ссылка «открыть бота и нажать Start»: код привязки приходит боту в /start.
+ * Telegram принимает в параметре только A-Za-z0-9_- до 64 символов. -> адрес или null, если показать нечего.
+ */
+export function telegramStartUrl(username, code) {
+  if (!/^[A-Za-z0-9_]{1,64}$/.test(String(username ?? '')) || !/^[A-Za-z0-9_-]{1,64}$/.test(String(code ?? ''))) return null;
+  return `https://t.me/${username}?start=${code}`;
+}
+
+/** Ссылка на создание приложения Slack с заполненным манифестом: включены только Incoming Webhooks. */
+export function slackCreateUrl() {
+  const manifest = { display_information: { name: t('app.name') }, settings: { incoming_webhooks: { incoming_webhooks_enabled: true } } };
+  return `https://api.slack.com/apps?new_app=1&manifest_json=${encodeURIComponent(JSON.stringify(manifest))}`;
+}
+
 /** Короткое имя сервера для команд (из названия продукта). */
 const serverName = () => (t('app.name').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'gateway');
 

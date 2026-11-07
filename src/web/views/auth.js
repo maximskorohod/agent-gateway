@@ -1,6 +1,7 @@
 // Экраны входа, второго фактора и мастера первичной настройки.
 import { html, raw, form, layout, th } from './html.js';
 import { t } from '../../i18n.js';
+import { notifyChoice, telegramLinkStep } from './notify-setup.js';
 
 /** Вход: пароль. */
 export function login({ csrf, error, locked } = {}) {
@@ -79,31 +80,17 @@ function stepTwo(csrf, d) {
 }
 
 function stepThree(csrf, d) {
-  if (d.tgCode) {
-    return html`
-      <p class="notice">${th('setup.tg_write', { bot: html`<strong>@${d.botUsername}</strong>`, command: html`<code>/start ${d.tgCode}</code>` })}</p>
-      ${form('', html`
-        <input type="hidden" name="step" value="3">
-        <input type="hidden" name="mode" value="check">
-        <button class="btn primary" type="submit">${t('setup.check')}</button>
-      `, csrf)}
-    `;
-  }
+  const post = (mode, inner) => form('', html`
+      <input type="hidden" name="step" value="3">
+      <input type="hidden" name="mode" value="${mode}">
+      ${inner}
+    `, csrf);
+  const skip = post('skip', html`<button class="btn" type="submit">${t('notify_setup.skip')}</button>`);
+  if (d.tgCode) return html`${telegramLinkStep({ post, code: d.tgCode, botUsername: d.botUsername })}${skip}`;
   return html`
-    <p class="muted">${t('setup.tg_intro')}</p>
-    ${form('', html`
-      <input type="hidden" name="step" value="3">
-      <input type="hidden" name="mode" value="telegram">
-      <label>${t('setup.bot_token')}
-        <input type="password" name="token" autocomplete="off" autocapitalize="off" spellcheck="false" required>
-      </label>
-      <button class="btn primary" type="submit">${t('setup.tg_connect')}</button>
-    `, csrf)}
-    ${form('', html`
-      <input type="hidden" name="step" value="3">
-      <input type="hidden" name="mode" value="skip">
-      <button class="btn" type="submit">${t('setup.tg_skip')}</button>
-    `, csrf)}
+    <p class="muted">${t('notify_setup.intro')}</p>
+    ${notifyChoice({ post })}
+    ${skip}
   `;
 }
 
