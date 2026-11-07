@@ -35,7 +35,9 @@ export async function registerWeb(fastify, ctx) {
 
   await fastify.register(fastifyCookie);
   await fastify.register(fastifyFormbody, { bodyLimit: 64 * 1024 });
-  await fastify.register(fastifyStatic, { root: path.join(config.root, 'src', 'web', 'public'), prefix: '/public/', decorateReply: false, cacheControl: true, maxAge: '1h' });
+  // style.css и app.js: max-age=0 + ETag — браузер каждый раз сверяется (ответ 304 без тела), поэтому новый вид
+  // доходит сразу после обновления шлюза, а не через час. Логотипы меняются редко и кэшируются на сутки.
+  await fastify.register(fastifyStatic, { root: path.join(config.root, 'src', 'web', 'public'), prefix: '/public/', decorateReply: false, cacheControl: true, maxAge: 0 });
   await fastify.register(fastifyStatic, { root: config.iconsDir, prefix: '/public/icons/', decorateReply: false, cacheControl: true, maxAge: '1d' });
   await fastify.register(sessionPlugin, { repo, secure, demo: !!config.demo });
   await fastify.register(csrfPlugin, { secure, repo, publicUrl: config.publicUrl });

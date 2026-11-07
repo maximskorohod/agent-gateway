@@ -281,12 +281,12 @@ export function keysPage({ csrf, credentials = [], pending = [], providers = [],
   return layout(t('keys.title'), detail, { csrf, flash, list, listHome: true, pendingCount: pending.length });
 }
 
-function providerTile(p, href, tag = '') {
+function providerTile(p, href, tag = '', tagClass = 'tag') {
   return html`<li>
         <a class="tile" href="${href}">
           <img src="/public/icons/${enc(p.slug)}.svg" alt="" width="32" height="32">
           <span>${p.name}</span>
-          ${tag ? html`<span class="tag">${tag}</span>` : ''}
+          ${tag ? html`<span class="${tagClass}">${tag}</span>` : ''}
         </a>
       </li>`;
 }
@@ -299,7 +299,7 @@ export function pickProvider({ providers = [], csrf, showcase = null } = {}) {
   return layout(t('keys.new'), html`
     <p class="muted">${t(showcase ? 'showcase.pick_hint' : 'keys.pick_service')}</p>
     <ul class="grid">
-      ${providers.map((p) => providerTile(p, `/keys/new/${enc(p.slug)}`, showcase ? t('showcase.try') : ''))}
+      ${providers.map((p) => providerTile(p, `/keys/new/${enc(p.slug)}`, showcase ? t('showcase.try') : '', 'tag try'))}
       ${(showcase ?? []).map((p) => providerTile(p, `/showcase/services/${enc(p.slug)}`, t('showcase.view')))}
     </ul>
     <p><a href="/keys">${t('keys.back_new')}</a></p>

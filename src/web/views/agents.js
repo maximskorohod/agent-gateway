@@ -62,6 +62,20 @@ function agentRow(a, csrf, credentials, ids, providers) {
     </li>`;
 }
 
+/** Форма нового агента: раскрыта, пока агентов нет; иначе свёрнута в строку «Новый агент». Работает без JS. */
+function newAgentForm(csrf, credentials, providers, open) {
+  const inner = form('/agents', html`
+        <label>${t('agents.name')}
+          <input name="name" required maxlength="60" autocomplete="off" spellcheck="false" placeholder="${t('agents.name_ph')}">
+        </label>
+        ${keyFields(credentials, { all: true, providers })}
+        <button class="btn primary" type="submit">${t('agents.add')}</button>
+      `, csrf);
+  return open
+    ? html`<section class="card"><h2>${t('agents.new_title')}</h2>${inner}</section>`
+    : html`<details class="card"><summary>${t('agents.new_title')}</summary>${inner}</details>`;
+}
+
 /** Список агентов и форма «+ Добавить». bindings — { [agentId]: credentialId[] }. */
 export function agentsPage({ csrf, agents = [], credentials = [], bindings = {}, flash = null, providers = [] } = {}) {
   return layout(t('agents.title'), html`
@@ -69,16 +83,7 @@ export function agentsPage({ csrf, agents = [], credentials = [], bindings = {},
       ? html`<ul class="list">${agents.map((a) => agentRow(a, csrf, credentials, bindings[a.id] ?? [], providers))}</ul>`
       : html`<p class="empty">${t('agents.none')}</p>`}
     <p class="hint">${t('agents.hint')}</p>
-    <section class="card">
-      <h2>${t('agents.new_title')}</h2>
-      ${form('/agents', html`
-        <label>${t('agents.name')}
-          <input name="name" required maxlength="60" autocomplete="off" spellcheck="false" placeholder="${t('agents.name_ph')}">
-        </label>
-        ${keyFields(credentials, { all: true, providers })}
-        <button class="btn primary" type="submit">${t('agents.add')}</button>
-      `, csrf)}
-    </section>
+    ${newAgentForm(csrf, credentials, providers, agents.length === 0)}
   `, { csrf, flash });
 }
 

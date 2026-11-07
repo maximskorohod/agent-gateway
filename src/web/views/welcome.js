@@ -17,7 +17,10 @@ const tokenEnvBlock = (text) => (text.includes('AGENTKEYGATE_TOKEN')
 
 const copyButton = (target, primary = false) => html`<p class="actions"><button class="btn${primary ? ' primary' : ''}" type="button" data-copy="${target}" data-copied="${t('agents.copied')}" data-selected="${t('agents.selected')}">${t('agents.copy')}</button></p>`;
 
-const mark = (done) => (done ? html`<span class="tag">${t('welcome.done')}</span>` : '');
+const mark = (done) => (done ? html`<span class="tag ok">${t('welcome.done')}</span>` : '');
+const stepClass = (done) => (done ? 'card step-card is-done' : 'card step-card');
+/** Полоса прогресса из трёх делений; текст «Готово: n из 3» рядом остаётся для чтения экраном. */
+const progressBar = (n) => html`<div class="progress" aria-hidden="true">${[0, 1, 2].map((i) => html`<span${i < n ? html` class="on"` : ''}></span>`)}</div>`;
 const agentLogo = (kind) => layoutIcon(`agent-${kind}`);
 const agentHead = (kind, caption) => html`<div class="head-ico">${agentLogo(kind)}<span class="muted">${caption}</span></div>`;
 
@@ -39,16 +42,10 @@ function notifyStep(csrf, state, tgCode, botUsername) {
     </div>`;
 }
 
-/** Подпись «Get a key →»: только https-адрес из каталога. */
-function getKeyLink(p) {
-  const url = typeof p.getKeyUrl === 'string' && /^https:\/\//i.test(p.getKeyUrl) ? p.getKeyUrl : '';
-  return url ? html`<a class="small" href="${url}" target="_blank" rel="noopener noreferrer">${t('key.get_key')}</a>` : '';
-}
-
+// Ссылка «где взять ключ» живёт на странице добавления ключа: под каждой плиткой она дробила сетку и тянула акцент.
 function keyGrid(providers) {
   return html`<ul class="grid">${providers.map((p) => html`<li>
       <a class="tile" href="/keys/new/${enc(p.slug)}"><img src="/public/icons/${enc(p.slug)}.svg" alt="" width="32" height="32"><span>${p.name}</span></a>
-      ${getKeyLink(p)}
     </li>`)}</ul>`;
 }
 
@@ -65,27 +62,29 @@ function worksBlock(calls) {
 /** Главная страница онбординга. state — из onboardingState. */
 export function welcomePage({ csrf, state, providers = [], flash = null, tgCode = null, botUsername = null } = {}) {
   return layout(t('welcome.title'), html`
-    <p class="muted">${t('welcome.intro')} <strong>${t('welcome.progress', { n: state.count })}</strong></p>
+    <div class="intro">
+      <p class="muted">${t('welcome.intro')} <strong>${t('welcome.progress', { n: state.count })}</strong></p>
+      ${progressBar(state.count)}
+    </div>
     ${state.calls > 0 ? worksBlock(state.calls) : ''}
-    <section class="card">
+    <section class="${stepClass(state.agent)}">
       <h2>${t('welcome.s1_title')} ${mark(state.agent)}</h2>
       <p class="hint">${t('welcome.s1_hint')}</p>
       ${agentCards(csrf)}
     </section>
-    <section class="card">
+    <section class="${stepClass(state.key)}">
       <h2>${t('welcome.s2_title')} ${mark(state.key)}</h2>
       <p class="hint">${t('welcome.s2_hint')}</p>
       ${keyGrid(providers)}
       <p><a class="btn" href="/keys/new">${t('welcome.s2_open')}</a></p>
     </section>
-    <section class="card">
+    <section class="${stepClass(state.notify)}">
       <h2>${t('welcome.s3_title')} ${mark(state.notify)}</h2>
       <p class="hint">${t('welcome.s3_hint')}</p>
       ${notifyStep(csrf, state, tgCode, botUsername)}
     </section>
     <div class="actions">
       ${form('/welcome/skip', html`<button class="btn" type="submit">${t('welcome.skip_all')}</button>`, csrf)}
-      <a href="/keys/new">${t('keys.add')}</a>
     </div>
   `, { csrf, flash });
 }
