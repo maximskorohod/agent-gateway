@@ -158,13 +158,16 @@ export function createRepo(db, { demo = false } = {}) {
     ),
 
     // статистика для страницы «Запросы»
+    // Вызовы, закрытые фильтром (proxy.denied), тоже считаются: это ошибка агента, владелец должен её видеть.
+    // Отказы пишутся с агрегацией: count в мете — сколько таких же отказов было пропущено перед записью.
     callStats: db.prepare(
       `SELECT json_extract(meta_json, '$.agent') AS agent_id,
               json_extract(meta_json, '$.credential') AS credential_id,
-              count(*) AS calls,
-              sum(CASE WHEN coalesce(json_extract(meta_json, '$.status'), 0) BETWEEN 200 AND 399 THEN 0 ELSE 1 END) AS errors,
+              sum(CASE WHEN action = 'proxy.denied' THEN 1 + coalesce(json_extract(meta_json, '$.count'), 0) ELSE 1 END) AS calls,
+              sum(CASE WHEN action = 'proxy.denied' THEN 1 + coalesce(json_extract(meta_json, '$.count'), 0)
+                       WHEN coalesce(json_extract(meta_json, '$.status'), 0) BETWEEN 200 AND 399 THEN 0 ELSE 1 END) AS errors,
               max(at) AS last_at
-       FROM audit WHERE action = 'proxy.call' AND at >= unixepoch() - @days * 86400
+       FROM audit WHERE action IN ('proxy.call', 'proxy.denied') AND at >= unixepoch() - @days * 86400
        GROUP BY 1, 2`,
     ),
     requestStats: db.prepare(
@@ -180,8 +183,9 @@ export function createRepo(db, { demo = false } = {}) {
     listCalls: db.prepare(
       `SELECT id, at, target, json_extract(meta_json, '$.agent') AS agent_id,
               json_extract(meta_json, '$.credential') AS credential_id,
-              json_extract(meta_json, '$.status') AS status, json_extract(meta_json, '$.ms') AS ms
-       FROM audit WHERE action = 'proxy.call' AND at >= unixepoch() - @days * 86400
+              coalesce(json_extract(meta_json, '$.status'), CASE WHEN action = 'proxy.denied' THEN 403 END) AS status,
+              json_extract(meta_json, '$.ms') AS ms
+       FROM audit WHERE action IN ('proxy.call', 'proxy.denied') AND at >= unixepoch() - @days * 86400
          AND (@agent IS NULL OR json_extract(meta_json, '$.agent') = @agent)
        ORDER BY id DESC LIMIT @limit`,
     ),

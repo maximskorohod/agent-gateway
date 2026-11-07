@@ -183,7 +183,12 @@ const agentCreate = {
     ctx.repo.audit(ctx.userId, 'agent.create', agent.id, { name: input.name, keys: input.all ? 'all' : ctx.repo.listAgentCredentials(agent.id), ...(fromDraft ? { via: 'draft' } : {}) });
     ctx.notify?.security(t('notify.sec.agent_created', { name: input.name }));
     const created = ctx.repo.getAgent(agent.id);
-    if (input.kind) return { html: welcomeAgentCreated({ csrf: ctx.csrf || '', agent: created, token, kind: input.kind, publicUrl: ctx.publicUrl || '' }) };
+    if (input.kind) {
+      // Имена сервисов для <service> в командах скрипта: только ключи, доступные этому агенту
+      const bound = new Set(ctx.repo.listAgentCredentials(agent.id));
+      const services = [...new Set(ctx.repo.listCredentials().filter((c) => input.all || bound.has(c.id)).map((c) => c.provider))];
+      return { html: welcomeAgentCreated({ csrf: ctx.csrf || '', agent: created, token, kind: input.kind, publicUrl: ctx.publicUrl || '', services }) };
+    }
     return { html: agentCreated({ csrf: ctx.csrf || '', agent: created, token }) }; // токен показывается один раз и нигде не хранится
   },
   summary: (ctx, id, input) => ({ title: t('pending.title.agent_create'), after: { [t('pending.f.name')]: input.name, [t('pending.f.keys')]: bindingText(ctx, input) } }),

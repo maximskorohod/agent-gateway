@@ -92,11 +92,15 @@ test('select: агентский заменяется разрешённым (qu
 });
 
 
-test('по умолчанию: фильтр выключен, у типов отмечены менеджер, комментарий, даты', () => {
+test('по умолчанию: фильтр выключен, у типов отмечены менеджер, сумма, даты; свободный текст выключен', () => {
   const d = normalizeFilter(null, bitrix);
   assert.equal(d.enabled, false);
   assert.deepEqual(Object.keys(d.entities), ['deals', 'leads', 'users']);
-  for (const p of ['result.ASSIGNED_BY_ID', 'result.COMMENTS', 'result.DATE_CREATE', 'result.MOVED_TIME']) assert.ok(d.entities.deals.includes(p), p);
+  for (const ent of ['deals', 'leads']) {
+    for (const p of ['result.ASSIGNED_BY_ID', 'result.OPPORTUNITY', 'result.CURRENCY_ID', 'result.DATE_CREATE', 'result.MOVED_TIME']) assert.ok(d.entities[ent].includes(p), `${ent} ${p}`);
+    // в названии и комментарии менеджеры пишут имена и телефоны клиентов
+    for (const p of ['result.TITLE', 'result.COMMENTS']) assert.ok(!d.entities[ent].includes(p), `${ent} ${p}`);
+  }
   assert.ok(!d.entities.leads.includes('result.PHONE'));
   assert.deepEqual(checkFilter({ ...d, enabled: true }, bitrix), []);
 });

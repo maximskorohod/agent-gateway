@@ -93,13 +93,16 @@ export function welcomePage({ csrf, state, providers = [], flash = null, tgCode 
  * Страница после нажатия карточки: токен и текст настройки. Показывается один раз (no-store ставит onSend),
  * в адреса токен не попадает.
  */
-export function welcomeAgentCreated({ csrf, agent = {}, token = '', kind = 'script', publicUrl = '' } = {}) {
+export function welcomeAgentCreated({ csrf, agent = {}, token = '', kind = 'script', publicUrl = '', services = [] } = {}) {
   const text = snippetFor(kind, { publicUrl, token });
   const how = hasKey(`welcome.how.${kind}`) ? t(`welcome.how.${kind}`) : '';
   const envBlock = tokenEnvBlock(text);
+  // Скрипту некуда спросить список сервисов (он есть только в MCP): называем их здесь
+  const names = kind === 'script' ? html`<p class="hint">${services.length ? t('welcome.services', { list: services.join(', ') }) : t('welcome.services_none')}</p>` : '';
   return layout(t('welcome.created_title', { name: agent.name }), html`
     ${agentHead(kind, t(`welcome.card.${kind}`))}
     <p class="hint">${how}</p>
+    ${names}
     <h2>${t('welcome.snippet')}</h2>
     <pre class="codes" id="snippet">${text}</pre>
     <p class="actions"><button class="btn primary" type="button" data-copy="#snippet" data-copied="${t('agents.copied')}" data-selected="${t('agents.selected')}">${t('agents.copy')}</button></p>

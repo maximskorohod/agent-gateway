@@ -437,7 +437,8 @@ providers:
             - { path: result.SOURCE_ID, label: 'Source' }
             - { path: result.CONTACT_ID, label: 'Contact (ID)' }
             - { path: result.COMPANY_ID, label: 'Company (ID)' }
-          defaults: [result.ID, result.STAGE_ID, result.ASSIGNED_BY_ID, result.COMMENTS, result.DATE_CREATE, result.MOVED_TIME]
+          # Free text (title, comment) is off by default: managers put client names and phones there
+          defaults: [result.ID, result.STAGE_ID, result.ASSIGNED_BY_ID, result.OPPORTUNITY, result.CURRENCY_ID, result.DATE_CREATE, result.MOVED_TIME]
         leads:
           name: 'Leads'
           methods: [crm.lead.list, crm.lead.get]
@@ -458,7 +459,7 @@ providers:
             - { path: result.LAST_NAME, label: 'Client last name' }
             - { path: result.PHONE, label: 'Client phone', object: true }   # multi-field: an array of {VALUE, VALUE_TYPE}
             - { path: result.EMAIL, label: 'Client e-mail', object: true }
-          defaults: [result.ID, result.STATUS_ID, result.ASSIGNED_BY_ID, result.COMMENTS, result.DATE_CREATE, result.MOVED_TIME]
+          defaults: [result.ID, result.STATUS_ID, result.ASSIGNED_BY_ID, result.OPPORTUNITY, result.CURRENCY_ID, result.DATE_CREATE, result.MOVED_TIME]
         # In deals and leads the manager is an ID only; the agent gets the name through user.get, and the other employee fields are cut out.
         users:
           name: 'Manager names'

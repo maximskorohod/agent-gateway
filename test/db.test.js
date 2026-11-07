@@ -475,6 +475,21 @@ test('статистика: вызовы и заявки по агенту и к
   assert.equal(repo.listCalls({ days: 1, agentId: 'другой' }).length, 0);
 });
 
+test('статистика: вызовы, закрытые фильтром, видны как ошибки с учётом агрегации', () => {
+  const { repo, now } = setup();
+  seed(repo, now);
+  repo.audit('agent:a1', 'proxy.call', 'GET bitrix24/crm.deal.list.json', { agent: 'a1', credential: 'c1', status: 200, ms: 5 });
+  // первая запись отказа без count, вторая — ещё 2 пропущенных перед ней; старая запись без status
+  repo.audit('agent:a1', 'proxy.denied', 'GET bitrix24/crm.contact.list.json', { agent: 'a1', credential: 'c1', denied_reason: 'method_not_allowed' });
+  repo.audit('agent:a1', 'proxy.denied', 'GET bitrix24/crm.contact.list.json', { agent: 'a1', credential: 'c1', denied_reason: 'query_not_allowed', status: 400, count: 2 });
+  const [row] = repo.callStats(1);
+  assert.equal(row.calls, 5);
+  assert.equal(row.errors, 4);
+  const recent = repo.listCalls({ days: 1, limit: 5 });
+  assert.deepEqual(recent.map((r) => r.status), [400, 403, 200]);
+  assert.equal(recent[0].ms, null);
+});
+
 test('approveRequest (П-10): одобрение и пропуск вместе, второй раз и после срока — нет', () => {
   const { db, repo, now } = setup();
   const t = now();

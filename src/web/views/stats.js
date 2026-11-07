@@ -120,7 +120,7 @@ export function statsPage({ csrf, days = 7, agentId = null, calls = [], requests
             <td>${credName(r.credential_id)}</td>
             <td><code>${r.target}</code></td>
             <td class="num"><span class="code ${Number(r.status) >= 200 && Number(r.status) < 400 ? 'code-ok' : 'code-err'}">${statusText(r.status)}</span></td>
-            <td class="num muted">${num(r.ms)}</td>
+            <td class="num muted">${r.ms == null ? '' : num(r.ms)}</td>
           </tr>`)}</tbody>
         </table></div>
         <p class="hint">${t('stats.recent_hint', { n: recent.length, calls: plural(recent.length, [t('unit.call.one'), t('unit.call.few'), t('unit.call.many')]) })}</p>` : html`<p class="muted">${t('stats.no_calls')}</p>`}

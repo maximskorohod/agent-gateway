@@ -161,7 +161,7 @@ export function createProxy({ repo, catalog, vault, grants, access, limits, logg
         if (qr) { reason = qr; status = qr === 'query_not_allowed' ? 400 : 403; }
       }
       if (reason) {
-        auditAggregated(`den:${agentId}:${credential.id}`, `agent:${agentId}`, 'proxy.denied', `${method} ${provider.slug}${maskPath(upstreamPath, credential)}`, { ...auditBase, denied_reason: reason });
+        auditAggregated(`den:${agentId}:${credential.id}`, `agent:${agentId}`, 'proxy.denied', `${method} ${provider.slug}${maskPath(upstreamPath, credential)}`, { ...auditBase, denied_reason: reason, status });
         return fail(status, reason, status === 403 ? { allowed: flt.methods } : undefined);
       }
     }

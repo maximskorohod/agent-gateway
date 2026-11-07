@@ -370,3 +370,16 @@ test('онбординг только для владельца: без сесс
   assert.ok([302, 403].includes(p.status));
   assert.equal(agentsOf(c).length, 0);
 });
+
+test('скрипт: страница агента называет имена сервисов для <service>, без ключей — подсказка', async () => {
+  const c = await boot();
+  await c.finish(); await c.get('/welcome');
+  const empty = (await c.post('/welcome/agent/script')).text2;
+  assert.match(empty, /No keys yet\. The service name for &lt;service&gt;/);
+  await c.post('/keys/new/telegram', { key: BOT, label: 'bot', mode: 'ask', approval: 'web_button', max_ttl: '3600', max_calls: '3', max_parallel: '2' });
+  await c.get('/welcome');
+  const named = (await c.post('/welcome/agent/script')).text2;
+  assert.match(named, /in place of &lt;service&gt;: telegram\./);
+  // другим карточкам список не нужен: у них есть MCP
+  assert.doesNotMatch((await c.post('/welcome/agent/claude-code')).text2, /in place of &lt;service&gt;/);
+});
